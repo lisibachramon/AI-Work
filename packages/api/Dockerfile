@@ -6,7 +6,14 @@ ENV PNPM_HOME="/pnpm" \
 RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
 
 # ---- deps stage: install everything once for the whole workspace ----
+# argon2/sharp ship prebuilt binaries for linux x64 + node 22, but if a
+# prebuild fetch fails (rate limit, transient 5xx), node-gyp falls back
+# to a source build — which needs python3 + a C++ toolchain. Cheap to
+# include and saves a flaky CI failure.
 FROM base AS deps
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3 make g++ libc6-dev pkg-config && \
+    rm -rf /var/lib/apt/lists/*
 WORKDIR /repo
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml* ./
 COPY tsconfig.base.json turbo.json ./
