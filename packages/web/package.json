@@ -10,7 +10,9 @@
     "typecheck": "svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
-    "@kitchen/shared": "workspace:*"
+    "@kitchen/shared": "workspace:*",
+    "@zxing/browser": "^0.1.5",
+    "@zxing/library": "^0.21.3"
   },
   "devDependencies": {
     "@sveltejs/adapter-static": "^3.0.8",
