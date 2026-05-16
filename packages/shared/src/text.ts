@@ -42,12 +42,19 @@ export function similarity(a: string, b: string): number {
 }
 
 // Swiss-German diminutive aliases worth seeding alongside Standard German names.
-// Lookup is normalized → canonical; canonical is also normalized for storage.
+// Keys are the *normalized canonical name* (lowercased, umlauts expanded as
+// ae/oe/ue/ss, no whitespace) — they must match the output of the same
+// normalization applied to the seeded canonical name, otherwise the alias
+// never lands. Values are the surface forms users actually type.
 export const SWISS_ALIASES: Record<string, string[]> = {
-  petersilie: ["peterli"],
-  karotte: ["rueebli", "rüebli"],
-  brot: ["broetli", "brötli"],
-  haehnchen: ["pouletbrust", "poulet", "hähnchen"],
-  zwiebel: ["boelle", "böle"],
-  kartoffel: ["herdoepfel", "härdöpfel", "gschwellti"],
+  petersilie: ["peterli", "petersili"],
+  karotte: ["rueebli", "rüebli", "karotten"],
+  brot: ["broetli", "brötli", "brötchen"],
+  haehnchenbrust: ["pouletbrust", "poulet", "hühnerbrust", "huhn"],
+  zwiebel: ["boelle", "böle", "zwiebeln"],
+  kartoffel: ["herdoepfel", "härdöpfel", "gschwellti", "kartoffeln"],
+  vollmilch: ["milch"],
+  joghurt: ["jogurt", "yoghurt"],
+  apfel: ["aepfel", "äpfel"],
+  tomate: ["tomaten", "paradeiser"],
 };

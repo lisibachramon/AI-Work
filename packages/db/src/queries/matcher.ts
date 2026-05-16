@@ -19,7 +19,7 @@ export interface MatchCandidate {
   ingredient_id: string;
   canonical_name_de: string;
   score: number;
-  matched_via: "canonical" | "alias" | "trigram" | "tsv" | "embedding";
+  matched_via: "canonical" | "alias" | "trigram" | "tsv" | "prefix" | "embedding";
 }
 
 export interface MatchOptions {
@@ -55,22 +55,50 @@ export async function matchIngredient(
     ];
   }
 
+  // The query combines four match strategies and takes the best score per
+  // ingredient:
+  //   - alias trigram + alias exact ILIKE
+  //   - canonical-name trigram + canonical-name prefix ILIKE
+  //   - tsvector match via the german_unaccent FTS config (whole-word)
+  // pg_trgm's % operator uses pg_trgm.similarity_threshold (default 0.3);
+  // we also explicitly score with similarity() so prefix-only hits like
+  // "kart" → "Karotte" rank reasonably.
+  const prefix = `${q.replace(/[%_]/g, "\\$&")}%`;
   const rows = await db.execute<{
     ingredient_id: string;
     canonical_name_de: string;
     score: number;
-    matched_via: "trigram" | "tsv" | "alias";
+    matched_via: "trigram" | "tsv" | "alias" | "prefix";
   }>(sql`
     WITH alias_match AS (
       SELECT
         a.ingredient_id,
         i.canonical_name_de,
-        GREATEST(similarity(a.alias, ${q}), CASE WHEN a.alias ILIKE ${q} THEN 1.0 ELSE 0 END) AS score,
-        CASE WHEN a.alias ILIKE ${q} THEN 'alias' ELSE 'trigram' END AS matched_via
+        GREATEST(
+          similarity(unaccent(a.alias), unaccent(${q})),
+          CASE WHEN unaccent(a.alias) ILIKE unaccent(${q}) THEN 1.0 ELSE 0 END
+        ) AS score,
+        CASE WHEN unaccent(a.alias) ILIKE unaccent(${q}) THEN 'alias' ELSE 'trigram' END AS matched_via
       FROM ingredient_aliases a
       JOIN ingredients i ON i.id = a.ingredient_id
       WHERE i.user_id = ${opts.userId}
-        AND (a.alias % ${q} OR a.alias ILIKE ${q})
+        AND (unaccent(a.alias) % unaccent(${q}) OR unaccent(a.alias) ILIKE unaccent(${q}))
+    ),
+    canonical_match AS (
+      SELECT
+        i.id AS ingredient_id,
+        i.canonical_name_de,
+        GREATEST(
+          similarity(unaccent(i.canonical_name_de), unaccent(${q})),
+          CASE WHEN unaccent(i.canonical_name_de) ILIKE unaccent(${prefix}) THEN 0.85 ELSE 0 END
+        ) AS score,
+        CASE WHEN unaccent(i.canonical_name_de) ILIKE unaccent(${prefix}) THEN 'prefix' ELSE 'trigram' END AS matched_via
+      FROM ingredients i
+      WHERE i.user_id = ${opts.userId}
+        AND (
+          unaccent(i.canonical_name_de) % unaccent(${q})
+          OR unaccent(i.canonical_name_de) ILIKE unaccent(${prefix})
+        )
     ),
     fts_match AS (
       SELECT
@@ -82,10 +110,32 @@ export async function matchIngredient(
       WHERE i.user_id = ${opts.userId}
         AND i.name_tsv @@ websearch_to_tsquery('german_unaccent', ${q})
     ),
+    fts_prefix_match AS (
+      -- to_tsquery's :* operator does prefix matching on tokens, which
+      -- catches "milc" → "Vollmilch" (token "milch" prefix-matches "milc").
+      -- websearch_to_tsquery doesn't support :* so we build the query
+      -- manually after sanitizing: trim, drop empty/short tokens.
+      SELECT
+        i.id AS ingredient_id,
+        i.canonical_name_de,
+        0.5 AS score,
+        'tsv' AS matched_via
+      FROM ingredients i
+      WHERE i.user_id = ${opts.userId}
+        AND length(trim(${q})) >= 2
+        AND i.name_tsv @@ to_tsquery(
+          'german_unaccent',
+          regexp_replace(trim(${q}), '\s+', ':* & ', 'g') || ':*'
+        )
+    ),
     combined AS (
       SELECT * FROM alias_match
       UNION ALL
+      SELECT * FROM canonical_match
+      UNION ALL
       SELECT * FROM fts_match
+      UNION ALL
+      SELECT * FROM fts_prefix_match
     )
     SELECT ingredient_id, canonical_name_de, MAX(score) AS score,
            (ARRAY_AGG(matched_via ORDER BY score DESC))[1] AS matched_via
