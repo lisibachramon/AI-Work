@@ -7,7 +7,21 @@ export class AnthropicClient {
   private readonly client: Anthropic;
 
   constructor(private readonly env: Env) {
-    this.client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+    // Prefer the OAuth token (subscription-billed). Falls back to a
+    // standard API key. The router only instantiates this class when
+    // at least one is set.
+    if (env.CLAUDE_OAUTH_TOKEN) {
+      this.client = new Anthropic({
+        authToken: env.CLAUDE_OAUTH_TOKEN,
+        defaultHeaders: {
+          // Required when calling the Messages API with an OAuth bearer
+          // token; without it the API returns 401.
+          "anthropic-beta": env.ANTHROPIC_OAUTH_BETA,
+        },
+      });
+    } else {
+      this.client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+    }
   }
 
   private modelFor(task: CompleteArgs<unknown>["task"]): string {
@@ -39,7 +53,6 @@ export class AnthropicClient {
     }
     content.push({ type: "text", text: args.prompt });
 
-    // Use tool use to force structured output matching the Zod schema.
     const tool: Anthropic.Messages.Tool = {
       name: "emit",
       description: "Emit the structured result.",

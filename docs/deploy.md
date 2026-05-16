@@ -29,7 +29,24 @@ GHCR by GitHub Actions; deploys SSH to the server and roll the containers.
    ```
    At minimum fill in: `KITCHEN_VHOST`, `LETSENCRYPT_EMAIL`,
    `POSTGRES_PASSWORD`, `SESSION_SECRET` (`openssl rand -hex 32`),
-   `INVITE_CODE` (`openssl rand -hex 16`), `ANTHROPIC_API_KEY`.
+   `INVITE_CODE` (`openssl rand -hex 16`), and **one of**
+   `CLAUDE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` (see auth options below).
+
+### Anthropic auth — subscription vs. API key
+
+The kitchen api can authenticate to Claude two ways:
+
+- **Claude.ai subscription (recommended).** Run `claude setup-token` on
+  any machine with Claude Code installed and a logged-in Claude.ai
+  Enterprise/Pro/Max account. The command prints a long-lived
+  `sk-ant-oat01-...` token. Paste it into the `CLAUDE_OAUTH_TOKEN` slot
+  in `.env`. Vision + recipe calls bill against your subscription.
+- **Standard API key.** Create a key at console.anthropic.com and paste
+  it into `ANTHROPIC_API_KEY`. Per-token billing from your console
+  account.
+
+If both are set, the OAuth token wins. If neither is set, the router
+silently falls back to Ollama for every task (no Claude calls).
 
 4. **Pull the Ollama models on the host's `ollama` container** so the
    API can call them on first request:

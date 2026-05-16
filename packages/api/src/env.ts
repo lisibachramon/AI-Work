@@ -19,6 +19,12 @@ const EnvSchema = z.object({
   OLLAMA_VISION_MODEL: z.string().default("qwen2.5vl:7b"),
 
   ANTHROPIC_API_KEY: z.string().optional(),
+  // OAuth long-lived token from `claude setup-token` — billed to your
+  // Claude.ai subscription instead of API credits. Used as a Bearer token
+  // with the OAuth beta header. Takes precedence over ANTHROPIC_API_KEY
+  // when both are set.
+  CLAUDE_OAUTH_TOKEN: z.string().optional(),
+  ANTHROPIC_OAUTH_BETA: z.string().default("oauth-2025-04-20"),
   ANTHROPIC_VISION_MODEL: z.string().default("claude-sonnet-4-6"),
   ANTHROPIC_RECIPE_MODEL: z.string().default("claude-sonnet-4-6"),
   ANTHROPIC_PLAN_MODEL: z.string().default("claude-opus-4-7"),

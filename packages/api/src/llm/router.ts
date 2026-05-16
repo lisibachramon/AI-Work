@@ -55,7 +55,8 @@ export class LlmRouter {
 
   constructor(private readonly env: Env) {
     this.ollama = new OllamaClient(env);
-    this.anthropic = env.ANTHROPIC_API_KEY ? new AnthropicClient(env) : null;
+    const hasAnthropicAuth = !!(env.CLAUDE_OAUTH_TOKEN || env.ANTHROPIC_API_KEY);
+    this.anthropic = hasAnthropicAuth ? new AnthropicClient(env) : null;
     this.providerByTask = {
       transcript_parse: env.TASK_TRANSCRIPT_PARSE_PROVIDER,
       barcode_guess: env.TASK_BARCODE_GUESS_PROVIDER,
