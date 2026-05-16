@@ -1,10 +1,34 @@
+// Postgres enum types. The string tuples are duplicated from
+// @kitchen/shared/units intentionally — drizzle-kit's CJS loader can't
+// read @kitchen/shared's ESM exports map at migration-generation time.
+// If you add/remove enum values, update both files (Vitest test in
+// @kitchen/shared guards the invariant in CI).
+
 import { pgEnum } from "drizzle-orm/pg-core";
-import {
-  INGREDIENT_CATEGORIES,
-  LOCATION_KINDS,
-  STOCK_SOURCES,
-  STORAGE_UNITS,
-} from "@kitchen/shared/units";
+
+export const INGREDIENT_CATEGORIES = [
+  "produce",
+  "dairy",
+  "meat",
+  "fish",
+  "bakery",
+  "dry_goods",
+  "spices",
+  "beverages",
+  "frozen",
+  "condiments",
+  "other",
+] as const;
+export const LOCATION_KINDS = ["pantry", "fridge", "freezer", "spice_rack", "other"] as const;
+export const STOCK_SOURCES = [
+  "voice",
+  "photo",
+  "manual",
+  "barcode",
+  "video_barcode",
+  "video_vision",
+] as const;
+export const STORAGE_UNITS = ["g", "ml", "piece", "bunch", "pack", "slice"] as const;
 
 export const ingredientCategoryEnum = pgEnum("ingredient_category", INGREDIENT_CATEGORIES);
 export const locationKindEnum = pgEnum("location_kind", LOCATION_KINDS);

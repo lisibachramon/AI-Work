@@ -20,7 +20,7 @@
     }
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && cp src/bootstrap.sql src/indexes.sql dist/ 2>/dev/null || true",
+    "build": "tsc -p tsconfig.json && cp src/bootstrap.sql src/indexes.sql dist/ 2>/dev/null && cp -r src/migrations dist/migrations 2>/dev/null || true",
     "dev": "tsc -p tsconfig.json --watch",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "generate": "drizzle-kit generate",

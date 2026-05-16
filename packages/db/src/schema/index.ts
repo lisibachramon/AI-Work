@@ -14,7 +14,7 @@ import {
   primaryKey,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { createdAt, deletedAt, idPk, tsvector, updatedAt, vector } from "./columns.js";
+import { createdAt, deletedAt, idPk, tsvector, updatedAt, vector } from "./columns.ts";
 import {
   barcodeSourceEnum,
   consumptionReasonEnum,
@@ -28,9 +28,9 @@ import {
   recipeSourceEnum,
   stockSourceEnum,
   storageUnitEnum,
-} from "./enums.js";
+} from "./enums.ts";
 
-export * from "./enums.js";
+export * from "./enums.ts";
 
 // ---------- Auth ----------
 
