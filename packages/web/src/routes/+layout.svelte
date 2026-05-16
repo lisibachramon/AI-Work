@@ -35,6 +35,7 @@
       <a href="/inventory/" class:active={page.url.pathname.startsWith("/inventory")}>Pantry</a>
       <a href="/scan/" class:active={page.url.pathname.startsWith("/scan")}>Scan</a>
       <a href="/cook/" class:active={page.url.pathname.startsWith("/cook")}>Cook</a>
+      <a href="/shopping/" class:active={page.url.pathname.startsWith("/shopping")}>Shop</a>
       <a href="/settings/" class:active={page.url.pathname.startsWith("/settings")}>Settings</a>
       <span class="spacer"></span>
       <button onclick={handleLogout} class="logout">Logout</button>

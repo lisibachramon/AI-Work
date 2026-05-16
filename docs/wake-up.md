@@ -133,21 +133,13 @@ In rough order of "tells you a lot if it works":
    manually via "Add →" + autocomplete, and we cache the GTIN so the
    next scan is instant.
 
-6. **Shopping list** — `curl https://kitchen.lisibach.xyz/api/shopping-list`
-   (no UI screen yet — TODO). Should list anything consumed-but-not-
-   in-stock plus essentials marked low.
+6. **Shopping list** — /shopping screen. Mark items as essentials (top
+   bar "+ Add"), toggle "low" on any. The shopping list combines three
+   buckets: low essentials, things consumed in the last 14 days that
+   you no longer have, and ingredients in your recent recipes you're
+   missing.
 
 ## Pending work (transparent about what's NOT done)
-
-- **No essentials management UI.** The shopping-list code reads from
-  the `essentials` table but there's no screen to populate it. You can
-  curl directly:
-  ```sh
-  # mark salt as an always-on-hand essential
-  curl -X POST /api/essentials -H 'content-type: application/json' \
-       -d '{"ingredient_id":"...","present":true,"low":false}'
-  ```
-  ...except I haven't built that endpoint yet either. M2-stretch.
 
 - **No voice ingestion.** Whisper.cpp sidecar would fight the RTX
   2060 with your existing Ollama. Deferred until you decide whether to
@@ -197,13 +189,12 @@ A token of the form `sk-ant-oat01-...` is OAuth. Make sure
 
 In priority order (call your shots when you're back):
 
-1. Essentials UI + endpoint so the shopping list is fully driven from
-   the app.
-2. A `/shopping` screen rendering the existing endpoint.
-3. Embedding backfill job + nightly refresh.
-4. Stock detail screen with proper edit form.
-5. MCP HTTP transport + token UI in /settings (so you don't need a
+1. Embedding backfill job + nightly refresh.
+2. Stock detail screen with proper edit form (location/expiry/notes
+   beyond just quantity).
+3. MCP HTTP transport + token UI in /settings (so you don't need a
    port forward to use kitchen-mcp from anywhere).
-6. Recipe rating + ditching bad suggestions.
+4. Recipe rating + ditching bad suggestions.
+5. Voice ingestion (only if you're willing to give whisper VRAM).
 
 That's it. Coffee, then go press Suggest.
