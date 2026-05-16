@@ -1,0 +1,34 @@
+# LAN-only HTTPS via mkcert-issued certs. Camera + getUserMedia require a
+# secure context, so we terminate TLS even though we don't leave the LAN.
+#
+# Generate certs on the host once:
+#   mkcert -install
+#   mkcert -cert-file data/certs/kitchen.pem -key-file data/certs/kitchen-key.pem \
+#          kitchen.local "*.kitchen.local" 192.168.1.10 ::1
+# Install the mkcert root on your iPhone (Settings -> General -> About -> Cert Trust).
+
+:8443 {
+	tls /certs/kitchen.pem /certs/kitchen-key.pem
+
+	handle /api/* {
+		reverse_proxy api:8080
+	}
+	handle /auth/* {
+		reverse_proxy api:8080
+	}
+	handle /health* {
+		reverse_proxy api:8080
+	}
+	handle /mcp* {
+		reverse_proxy api:8080
+	}
+	handle {
+		reverse_proxy web:8081
+	}
+
+	encode zstd gzip
+	log {
+		output stdout
+		format console
+	}
+}

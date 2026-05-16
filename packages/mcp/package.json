@@ -1,0 +1,27 @@
+{
+  "name": "@kitchen/mcp",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/stdio.js",
+  "bin": {
+    "kitchen-mcp": "./dist/stdio.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch src/stdio.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@kitchen/db": "workspace:*",
+    "@kitchen/shared": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "drizzle-orm": "^0.38.3",
+    "postgres": "^3.4.5",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

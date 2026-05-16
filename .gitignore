@@ -1,0 +1,16 @@
+node_modules/
+dist/
+build/
+.turbo/
+.svelte-kit/
+.next/
+coverage/
+.DS_Store
+*.log
+.env
+.env.local
+.env.*.local
+data/
+!data/.gitkeep
+.pnpm-store/
+*.tsbuildinfo
