@@ -53,6 +53,29 @@ export async function registerRecipeRoutes(app: FastifyInstance) {
         maxTokens: 4096,
       });
 
+      // Validate ingredient_ids — Claude may hallucinate a UUID that doesn't
+      // exist for this user. Build a set of valid ids, null out any
+      // references the model invented to avoid FK failures.
+      const proposedIds = new Set<string>();
+      for (const r of result.value.recipes) {
+        for (const ri of r.ingredients) {
+          if (ri.ingredient_id) proposedIds.add(ri.ingredient_id);
+        }
+      }
+      const validIds = new Set<string>();
+      if (proposedIds.size > 0) {
+        const validRows = await app.db
+          .select({ id: ingredients.id })
+          .from(ingredients)
+          .where(
+            and(
+              eq(ingredients.user_id, userId),
+              sql`${ingredients.id} = ANY(${Array.from(proposedIds)}::uuid[])`,
+            ),
+          );
+        for (const row of validRows) validIds.add(row.id);
+      }
+
       const persisted = await Promise.all(
         result.value.recipes.map(async (r) => {
           const [row] = await app.db
@@ -75,7 +98,10 @@ export async function registerRecipeRoutes(app: FastifyInstance) {
             await app.db.insert(recipeIngredients).values(
               r.ingredients.map((ri) => ({
                 recipe_id: row.id,
-                ingredient_id: ri.ingredient_id,
+                ingredient_id:
+                  ri.ingredient_id && validIds.has(ri.ingredient_id)
+                    ? ri.ingredient_id
+                    : null,
                 raw_text: ri.raw_text,
                 quantity: ri.quantity?.toString(),
                 unit: ri.unit,
