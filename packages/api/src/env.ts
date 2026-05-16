@@ -6,6 +6,12 @@ const EnvSchema = z.object({
   DATABASE_URL: z.string().url(),
   SESSION_SECRET: z.string().min(32),
   PUBLIC_BASE_URL: z.string().url().default("https://kitchen.local:8443"),
+  // Public origin for the web UI; CORS is locked to this in production.
+  // Comma-separated list supported for staging URLs etc.
+  ALLOWED_ORIGIN: z.string().optional(),
+  // If set, /auth/register requires the body to include this code.
+  // If empty, /auth/register is disabled outright in production.
+  INVITE_CODE: z.string().optional(),
 
   OLLAMA_BASE_URL: z.string().url().default("http://host.docker.internal:11434"),
   OLLAMA_TEXT_MODEL: z.string().default("qwen2.5:14b-instruct"),

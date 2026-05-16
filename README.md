@@ -10,7 +10,10 @@ Self-hosted kitchen inventory + AI recipe planner. German/Swiss-first. Runs enti
 - `packages/mcp` — MCP server exposing the pantry as tools (stdio first; HTTP in M3).
 - `packages/web` — SvelteKit PWA, installs to iOS home screen via mkcert HTTPS.
 - `services/whisper` — whisper.cpp HTTP service on the host GPU.
-- `docs/runbook.md` — operational setup.
+- `deploy/` — production compose stack + `.env.example` for the home-server deployment.
+- `.github/workflows/` — CI (build & typecheck on every push) and Deploy (build → push to GHCR → SSH-roll the server on push to `main`).
+- `docs/runbook.md` — local LAN setup with mkcert HTTPS.
+- `docs/deploy.md` — public-web deployment via your existing nginx-proxy / letsencrypt-companion stack, with the GitHub Secrets list.
 
 ## Milestones
 

@@ -43,7 +43,13 @@ async function main() {
   app.decorate("llm", llm);
   app.decorateRequest("userId", null);
 
-  await app.register(cors, { origin: true, credentials: true });
+  // In production, lock CORS to the configured origin(s). Reflecting the
+  // request origin defeats the point of CORS once we're on the public web.
+  const allowedOrigins =
+    env.NODE_ENV === "production" && env.ALLOWED_ORIGIN
+      ? env.ALLOWED_ORIGIN.split(",").map((s) => s.trim()).filter(Boolean)
+      : true;
+  await app.register(cors, { origin: allowedOrigins, credentials: true });
   await app.register(cookie, { secret: env.SESSION_SECRET });
   await app.register(rateLimit, { max: 300, timeWindow: "1 minute" });
 

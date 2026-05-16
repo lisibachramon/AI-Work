@@ -1,0 +1,149 @@
+# Production deployment stack. Joins the user's existing reverse-proxy
+# network (proxy_default) so jwilder/nginx-proxy + letsencrypt-companion
+# can route a vhost to the web container. The api is private — only the
+# web container's nginx talks to it.
+#
+# Pre-reqs on the server (one-time):
+#   - The main stack with `proxy_default` network is already running
+#   - GHCR_PAT logged in via `docker login ghcr.io` so this stack can pull
+#   - .env in this directory filled out per .env.example
+#
+# Routine deploy is driven by .github/workflows/deploy.yml.
+
+name: kitchen
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - kitchen-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks:
+      - kitchen-internal
+
+  api:
+    image: ${KITCHEN_API_IMAGE:-ghcr.io/lisibachramon/ai-work/kitchen-api:latest}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      SESSION_SECRET: ${SESSION_SECRET}
+      PUBLIC_BASE_URL: https://${KITCHEN_VHOST}
+      ALLOWED_ORIGIN: https://${KITCHEN_VHOST}
+      INVITE_CODE: ${INVITE_CODE:-}
+
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      OLLAMA_TEXT_MODEL: ${OLLAMA_TEXT_MODEL:-qwen2.5:7b-instruct}
+      OLLAMA_EMBED_MODEL: ${OLLAMA_EMBED_MODEL:-bge-m3}
+      OLLAMA_VISION_MODEL: ${OLLAMA_VISION_MODEL:-qwen2.5vl:3b}
+
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_VISION_MODEL: ${ANTHROPIC_VISION_MODEL:-claude-sonnet-4-6}
+      ANTHROPIC_RECIPE_MODEL: ${ANTHROPIC_RECIPE_MODEL:-claude-sonnet-4-6}
+      ANTHROPIC_PLAN_MODEL: ${ANTHROPIC_PLAN_MODEL:-claude-opus-4-7}
+      ANTHROPIC_FALLBACK_MODEL: ${ANTHROPIC_FALLBACK_MODEL:-claude-haiku-4-5}
+
+      TASK_TRANSCRIPT_PARSE_PROVIDER: ${TASK_TRANSCRIPT_PARSE_PROVIDER:-ollama}
+      TASK_BARCODE_GUESS_PROVIDER: ${TASK_BARCODE_GUESS_PROVIDER:-ollama}
+      TASK_AUTOCOMPLETE_PROVIDER: ${TASK_AUTOCOMPLETE_PROVIDER:-ollama}
+      TASK_EMBEDDINGS_PROVIDER: ${TASK_EMBEDDINGS_PROVIDER:-ollama}
+      TASK_PHOTO_VISION_PROVIDER: ${TASK_PHOTO_VISION_PROVIDER:-anthropic}
+      TASK_VIDEO_VISION_PROVIDER: ${TASK_VIDEO_VISION_PROVIDER:-anthropic}
+      TASK_RECIPE_GENERATION_PROVIDER: ${TASK_RECIPE_GENERATION_PROVIDER:-anthropic}
+      TASK_MEAL_PLAN_PROVIDER: ${TASK_MEAL_PLAN_PROVIDER:-anthropic}
+
+      WHISPER_BASE_URL: ${WHISPER_BASE_URL:-http://whisper:9000}
+      WHISPER_MODEL: ${WHISPER_MODEL:-large-v3}
+      WHISPER_LANGUAGE: ${WHISPER_LANGUAGE:-de}
+
+      VIDEO_MAX_VISION_CALLS_PER_SESSION: ${VIDEO_MAX_VISION_CALLS_PER_SESSION:-30}
+    volumes:
+      - kitchen-uploads:/app/data/uploads
+    networks:
+      - kitchen-internal
+      - proxy_default
+
+  web:
+    image: ${KITCHEN_WEB_IMAGE:-ghcr.io/lisibachramon/ai-work/kitchen-web:latest}
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      VIRTUAL_HOST: ${KITCHEN_VHOST}
+      LETSENCRYPT_HOST: ${KITCHEN_VHOST}
+      LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL}
+      VIRTUAL_PORT: "8081"
+    networks:
+      - proxy_default
+
+  whisper:
+    profiles: ["whisper"]
+    build:
+      context: ../services/whisper
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      WHISPER_MODEL: ${WHISPER_MODEL:-large-v3}
+    volumes:
+      - kitchen-whisper-models:/models
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      - kitchen-internal
+
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - kitchen-backups:/backups
+      - kitchen-uploads:/uploads:ro
+    networks:
+      - kitchen-internal
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        apk add --no-cache rsync gzip >/dev/null 2>&1 || true
+        while true; do
+          ts=$$(date +%Y%m%d-%H%M%S)
+          mkdir -p /backups/db /backups/uploads
+          PGPASSWORD=$$POSTGRES_PASSWORD pg_dump -h postgres -U $$POSTGRES_USER $$POSTGRES_DB | gzip > /backups/db/dump-$$ts.sql.gz && \
+            ls -t /backups/db/dump-*.sql.gz | tail -n +8 | xargs -r rm -f
+          rsync -a --delete /uploads/ /backups/uploads/
+          sleep 86400
+        done
+
+volumes:
+  kitchen-postgres-data:
+  kitchen-uploads:
+  kitchen-whisper-models:
+  kitchen-backups:
+
+networks:
+  kitchen-internal:
+    driver: bridge
+  proxy_default:
+    external: true
