@@ -79,6 +79,38 @@ export async function registerStockRoutes(app: FastifyInstance) {
     return row;
   });
 
+  app.patch("/api/stock/:id", async (req, reply) => {
+    const userId = requireAuth(req, reply);
+    if (!userId) return;
+    const { id } = req.params as { id: string };
+    const Body = z.object({
+      quantity: z.number().positive().optional(),
+      expiry_date: z.string().date().nullable().optional(),
+      opened_at: z.string().datetime().nullable().optional(),
+      notes: z.string().max(500).nullable().optional(),
+      location_id: z.string().uuid().optional(),
+    });
+    const parsed = Body.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send(parsed.error.flatten());
+    const update: Record<string, unknown> = {};
+    if (parsed.data.quantity !== undefined) update.quantity = parsed.data.quantity.toString();
+    if (parsed.data.expiry_date !== undefined) update.expiry_date = parsed.data.expiry_date;
+    if (parsed.data.opened_at !== undefined)
+      update.opened_at = parsed.data.opened_at ? new Date(parsed.data.opened_at) : null;
+    if (parsed.data.notes !== undefined) update.notes = parsed.data.notes;
+    if (parsed.data.location_id !== undefined) update.location_id = parsed.data.location_id;
+    if (Object.keys(update).length === 0) return reply.code(400).send({ error: "no_fields" });
+    update.updated_at = new Date();
+
+    const [row] = await app.db
+      .update(stockItems)
+      .set(update)
+      .where(and(eq(stockItems.id, id), eq(stockItems.user_id, userId)))
+      .returning();
+    if (!row) return reply.code(404).send({ error: "not_found" });
+    return row;
+  });
+
   app.delete("/api/stock/:id", async (req, reply) => {
     const userId = requireAuth(req, reply);
     if (!userId) return;

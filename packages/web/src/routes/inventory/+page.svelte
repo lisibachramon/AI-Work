@@ -64,6 +64,32 @@
     }
   }
 
+  async function handleAdjust(it: StockItem) {
+    const current = parseFloat(it.quantity);
+    const raw = prompt(
+      `Adjust ${it.ingredient.canonical_name_de} (currently ${current} ${it.unit}):`,
+      String(current),
+    );
+    if (raw === null) return;
+    const next = parseFloat(raw);
+    if (!Number.isFinite(next) || next < 0) {
+      alert("Enter a non-negative number.");
+      return;
+    }
+    if (next === 0) {
+      await handleDelete(it.id);
+      return;
+    }
+    try {
+      const updated = await api.patch<{ quantity: string }>(`/api/stock/${it.id}`, {
+        quantity: next,
+      });
+      items = items.map((x) => (x.id === it.id ? { ...x, quantity: updated.quantity } : x));
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "Update failed.");
+    }
+  }
+
   function daysUntil(d: string | null): number | null {
     if (!d) return null;
     return Math.ceil((new Date(d).getTime() - Date.now()) / 86400000);
@@ -124,7 +150,11 @@
             <li>
               <div class="name">{it.ingredient.canonical_name_de}</div>
               <div class="meta">
-                <span class="qty">{formatQuantity(it.quantity, it.unit)}</span>
+                <button
+                  class="qty"
+                  onclick={() => handleAdjust(it)}
+                  title="Adjust quantity"
+                >{formatQuantity(it.quantity, it.unit)}</button>
                 {#if d !== null}
                   <span
                     class="expiry"
@@ -249,6 +279,15 @@
   }
   .qty {
     color: #ccc;
+    background: transparent;
+    border: 1px solid transparent;
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    font-size: inherit;
+  }
+  .qty:hover {
+    background: #1a1a1a;
+    border-color: #2a2a2a;
   }
   .expiry {
     font-size: 0.75rem;
