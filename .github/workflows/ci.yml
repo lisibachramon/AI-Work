@@ -42,3 +42,6 @@ jobs:
 
       - name: Build web
         run: pnpm --filter @kitchen/web build
+
+      - name: Test shared
+        run: pnpm --filter @kitchen/shared test

@@ -11,6 +11,9 @@ import { registerIngredientRoutes } from "./routes/ingredients.js";
 import { registerLocationRoutes } from "./routes/locations.js";
 import { registerStockRoutes } from "./routes/stock.js";
 import { registerBarcodeRoutes } from "./routes/barcode.js";
+import { registerRecipeRoutes } from "./routes/recipes.js";
+import { registerIngestRoutes } from "./routes/ingest.js";
+import { registerShoppingRoutes } from "./routes/shopping.js";
 
 declare module "fastify" {
   interface FastifyInstance {
@@ -59,6 +62,9 @@ async function main() {
   await registerLocationRoutes(app);
   await registerStockRoutes(app);
   await registerBarcodeRoutes(app);
+  await registerRecipeRoutes(app);
+  await registerIngestRoutes(app);
+  await registerShoppingRoutes(app);
 
   await app.listen({ host: "0.0.0.0", port: env.API_PORT });
   app.log.info({ port: env.API_PORT }, "api up");

@@ -2,8 +2,11 @@
   import { onMount } from "svelte";
   import { api, ApiError, type StockItem, type Location } from "$lib/api.ts";
 
+  type PendingEvent = { id: string; kind: string; status: string };
+
   let items = $state<StockItem[]>([]);
   let locations = $state<Location[]>([]);
+  let pending = $state<PendingEvent[]>([]);
   let loading = $state(true);
   let error = $state<string | null>(null);
   let locationFilter = $state<string | "all">("all");
@@ -36,10 +39,14 @@
     loading = true;
     error = null;
     try {
-      [items, locations] = await Promise.all([
+      const [s, l, p] = await Promise.all([
         api.get<StockItem[]>("/api/stock"),
         api.get<Location[]>("/api/locations"),
+        api.get<PendingEvent[]>("/api/ingest/events").catch(() => [] as PendingEvent[]),
       ]);
+      items = s;
+      locations = l;
+      pending = p;
     } catch (err) {
       error = err instanceof ApiError ? err.message : "Failed to load.";
     } finally {
@@ -70,8 +77,20 @@
 
 <div class="header">
   <h1>Pantry</h1>
-  <a href="/inventory/add/" class="add-btn">+ Add</a>
+  <div class="header-actions">
+    <a href="/inventory/scan-photo/" class="photo-btn">📷 Photo</a>
+    <a href="/inventory/add/" class="add-btn">+ Add</a>
+  </div>
 </div>
+
+{#if pending.length > 0}
+  <div class="pending">
+    {pending.length} photo proposal{pending.length === 1 ? "" : "s"} awaiting review:
+    {#each pending as p (p.id)}
+      <a href={`/inventory/proposals/${p.id}/`}>open</a>
+    {/each}
+  </div>
+{/if}
 
 <div class="filters">
   <select bind:value={locationFilter}>
@@ -137,13 +156,35 @@
     margin: 0;
     font-size: 1.6rem;
   }
-  .add-btn {
+  .header-actions {
+    display: flex;
+    gap: 0.5rem;
+  }
+  .add-btn,
+  .photo-btn {
     background: #4a90e2;
     color: white;
     border-radius: 6px;
     padding: 0.5rem 0.9rem;
     text-decoration: none;
     font-weight: 500;
+  }
+  .photo-btn {
+    background: #222;
+  }
+  .pending {
+    background: #2a1f0e;
+    border: 1px solid #3a2a18;
+    color: #f0c674;
+    padding: 0.6rem 0.9rem;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    font-size: 0.9rem;
+  }
+  .pending a {
+    color: #fff;
+    margin-left: 0.4rem;
+    text-decoration: underline;
   }
   .filters {
     display: flex;
