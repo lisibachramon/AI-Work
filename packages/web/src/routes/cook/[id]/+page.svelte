@@ -69,6 +69,30 @@
       cookBusy = false;
     }
   }
+
+  async function setRating(value: number | null) {
+    if (!recipe) return;
+    const prior = recipe.rating;
+    recipe = { ...recipe, rating: value };
+    try {
+      await api.patch(`/api/recipes/${id}`, { rating: value });
+    } catch (err) {
+      // Revert the optimistic update.
+      recipe = recipe ? { ...recipe, rating: prior } : recipe;
+      alert(err instanceof ApiError ? err.message : "Rating failed.");
+    }
+  }
+
+  async function deleteRecipe() {
+    if (!recipe) return;
+    if (!confirm(`Delete "${recipe.title}"?`)) return;
+    try {
+      await api.delete(`/api/recipes/${id}`);
+      goto("/cook/", { replaceState: true });
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "Delete failed.");
+    }
+  }
 </script>
 
 <a href="/cook/" class="back">← All recipes</a>
@@ -89,6 +113,21 @@
     <span>{recipe.healthiness}</span>
     {#if recipe.cuisine}<span>·</span><span>{recipe.cuisine}</span>{/if}
     {#if recipe.times_cooked > 0}<span>·</span><span class="cooked">cooked {recipe.times_cooked}×</span>{/if}
+  </div>
+
+  <div class="rating-row">
+    <div class="stars" role="radiogroup" aria-label="Rating">
+      {#each [1, 2, 3, 4, 5] as n (n)}
+        <button
+          type="button"
+          class="star"
+          class:on={(recipe.rating ?? 0) >= n}
+          onclick={() => setRating((recipe?.rating ?? 0) === n ? null : n)}
+          aria-label={`${n} star${n === 1 ? "" : "s"}`}
+        >★</button>
+      {/each}
+    </div>
+    <button class="delete-recipe" onclick={deleteRecipe}>Delete recipe</button>
   </div>
 
   <section>
@@ -171,6 +210,44 @@
   }
   .cooked {
     color: #6ec38a;
+  }
+  .rating-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1.5rem;
+    padding: 0.6rem 0.9rem;
+    background: #111;
+    border-radius: 8px;
+  }
+  .stars {
+    display: flex;
+    gap: 0.15rem;
+  }
+  .star {
+    background: transparent;
+    border: 0;
+    color: #444;
+    font-size: 1.5rem;
+    padding: 0.1rem 0.2rem;
+    cursor: pointer;
+    line-height: 1;
+  }
+  .star.on {
+    color: #f0c674;
+  }
+  .delete-recipe {
+    background: transparent;
+    border: 1px solid #2a2a2a;
+    color: #888;
+    padding: 0.4rem 0.7rem;
+    border-radius: 6px;
+    font: inherit;
+    font-size: 0.85rem;
+  }
+  .delete-recipe:hover {
+    border-color: #663030;
+    color: #ff6b6b;
   }
   section {
     margin-bottom: 1.5rem;

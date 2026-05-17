@@ -185,6 +185,41 @@ export async function registerRecipeRoutes(app: FastifyInstance) {
     return { ...recipe, ingredients: ris };
   });
 
+  app.patch("/api/recipes/:id", async (req, reply) => {
+    const userId = requireAuth(req, reply);
+    if (!userId) return;
+    const { id } = req.params as { id: string };
+    const Body = z.object({
+      rating: z.number().int().min(1).max(5).nullable().optional(),
+      title: z.string().min(1).max(200).optional(),
+    });
+    const parsed = Body.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send(parsed.error.flatten());
+    const update: Record<string, unknown> = {};
+    if (parsed.data.rating !== undefined) update.rating = parsed.data.rating;
+    if (parsed.data.title !== undefined) update.title = parsed.data.title;
+    if (Object.keys(update).length === 0) return reply.code(400).send({ error: "no_fields" });
+    const [row] = await app.db
+      .update(recipes)
+      .set(update)
+      .where(and(eq(recipes.id, id), eq(recipes.user_id, userId)))
+      .returning();
+    if (!row) return reply.code(404).send({ error: "not_found" });
+    return row;
+  });
+
+  app.delete("/api/recipes/:id", async (req, reply) => {
+    const userId = requireAuth(req, reply);
+    if (!userId) return;
+    const { id } = req.params as { id: string };
+    const [row] = await app.db
+      .delete(recipes)
+      .where(and(eq(recipes.id, id), eq(recipes.user_id, userId)))
+      .returning({ id: recipes.id });
+    if (!row) return reply.code(404).send({ error: "not_found" });
+    return { ok: true };
+  });
+
   app.post("/api/recipes/:id/cook", async (req, reply) => {
     const userId = requireAuth(req, reply);
     if (!userId) return;

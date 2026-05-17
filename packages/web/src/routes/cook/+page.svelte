@@ -175,6 +175,10 @@
               <span>·</span>
               <span class="cooked">cooked {r.times_cooked}×</span>
             {/if}
+            {#if r.rating}
+              <span>·</span>
+              <span class="rating">{"★".repeat(r.rating)}</span>
+            {/if}
           </div>
         </a>
       </li>
@@ -295,6 +299,10 @@
   }
   .cooked {
     color: #6ec38a;
+  }
+  .rating {
+    color: #f0c674;
+    letter-spacing: 0.1em;
   }
   .muted {
     color: #888;
