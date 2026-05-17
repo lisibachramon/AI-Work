@@ -34,11 +34,11 @@ jobs:
       - name: Build db
         run: pnpm --filter @kitchen/db build
 
-      - name: Build api
-        run: pnpm --filter @kitchen/api build
-
       - name: Build mcp
         run: pnpm --filter @kitchen/mcp build
+
+      - name: Build api
+        run: pnpm --filter @kitchen/api build
 
       - name: Build web
         run: pnpm --filter @kitchen/web build

@@ -29,9 +29,14 @@ FROM deps AS build
 WORKDIR /repo
 COPY packages/shared packages/shared
 COPY packages/db packages/db
+COPY packages/mcp packages/mcp
 COPY packages/api packages/api
+# mcp builds before api because api imports @kitchen/mcp/tools at runtime
+# (the MCP HTTP transport reuses the same tool definitions as the stdio
+# entrypoint).
 RUN pnpm --filter @kitchen/shared build && \
     pnpm --filter @kitchen/db build && \
+    pnpm --filter @kitchen/mcp build && \
     pnpm --filter @kitchen/api build
 
 # ---- runtime image ----
@@ -47,6 +52,7 @@ WORKDIR /app
 COPY --from=build /repo/node_modules ./node_modules
 COPY --from=build /repo/packages/shared ./packages/shared
 COPY --from=build /repo/packages/db ./packages/db
+COPY --from=build /repo/packages/mcp ./packages/mcp
 COPY --from=build /repo/packages/api ./packages/api
 COPY --from=build /repo/package.json /repo/pnpm-workspace.yaml ./
 RUN mkdir -p /app/data/uploads/audio /app/data/uploads/photos
