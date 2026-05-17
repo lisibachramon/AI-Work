@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { goto } from "$app/navigation";
   import { api, ApiError, type StockItem, type Location } from "$lib/api.ts";
 
   type PendingEvent = { id: string; kind: string; status: string };
@@ -11,6 +12,15 @@
   let error = $state<string | null>(null);
   let locationFilter = $state<string | "all">("all");
   let expiringFilter = $state(false);
+  let suggestBusy = $state(false);
+
+  const expiringSoon = $derived(
+    items.filter((it) => {
+      if (!it.expiry_date) return false;
+      const days = (new Date(it.expiry_date).getTime() - Date.now()) / 86400000;
+      return days <= 4;
+    }),
+  );
 
   const filtered = $derived(
     items.filter((it) => {
@@ -51,6 +61,36 @@
       error = err instanceof ApiError ? err.message : "Failed to load.";
     } finally {
       loading = false;
+    }
+  }
+
+  async function suggestFromExpiring() {
+    if (suggestBusy) return;
+    suggestBusy = true;
+    try {
+      const expiringIds = expiringSoon.map((it) => it.ingredient.id);
+      await api.post<{ recipes: unknown[] }>("/api/recipes/suggest", {
+        count: 3,
+        filters:
+          expiringIds.length > 0
+            ? { must_use: expiringIds, max_minutes: 45 }
+            : { max_minutes: 45 },
+        prompt_hint:
+          expiringIds.length > 0
+            ? "Verwende vorrangig die ablaufenden Zutaten."
+            : "Schnelles Abendessen aus dem Vorrat.",
+      });
+      goto("/cook/");
+    } catch (err) {
+      alert(
+        err instanceof ApiError
+          ? err.message === "llm_failed"
+            ? "LLM call failed — check Claude config on the server."
+            : err.message
+          : "Suggest failed.",
+      );
+    } finally {
+      suggestBusy = false;
     }
   }
 
@@ -116,6 +156,18 @@
       <a href={`/inventory/proposals/${p.id}/`}>open</a>
     {/each}
   </div>
+{/if}
+
+{#if !loading && items.length > 0}
+  <button class="suggest-cta" onclick={suggestFromExpiring} disabled={suggestBusy}>
+    {#if suggestBusy}
+      Asking Claude…
+    {:else if expiringSoon.length > 0}
+      🍳 Cook with the {expiringSoon.length} expiring item{expiringSoon.length === 1 ? "" : "s"}
+    {:else}
+      🍳 Suggest a quick recipe
+    {/if}
+  </button>
 {/if}
 
 <div class="filters">
@@ -215,6 +267,23 @@
     color: #fff;
     margin-left: 0.4rem;
     text-decoration: underline;
+  }
+  .suggest-cta {
+    width: 100%;
+    background: linear-gradient(135deg, #4a90e2 0%, #6a55e2 100%);
+    color: white;
+    border: 0;
+    border-radius: 8px;
+    padding: 0.8rem 1rem;
+    font: inherit;
+    font-size: 0.95rem;
+    margin-bottom: 1rem;
+    text-align: center;
+    cursor: pointer;
+  }
+  .suggest-cta:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
   }
   .filters {
     display: flex;

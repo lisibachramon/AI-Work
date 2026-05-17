@@ -3,6 +3,7 @@
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import { api, ApiError, type Location } from "$lib/api.ts";
+  import IngredientSearch from "$lib/IngredientSearch.svelte";
 
   type IngredientMatch = {
     ingredient_id: string;
@@ -50,6 +51,7 @@
   let picks = $state<Record<string, {
     accepted: boolean;
     ingredient_id: string | null;
+    ingredient_label: string;
     location_id: string;
     quantity: string;
     unit: string;
@@ -83,6 +85,7 @@
         newPicks[p.id] = {
           accepted: topMatch ? topMatch.score >= 0.6 : false,
           ingredient_id: topMatch?.ingredient_id ?? null,
+          ingredient_label: topMatch?.name ?? p.proposed_action.item.name_de,
           location_id: locForHint?.id ?? locs[0]?.id ?? "",
           quantity: (p.proposed_action.item.quantity ?? 1).toString(),
           unit: p.proposed_action.item.unit ?? "piece",
@@ -171,22 +174,47 @@
           <span class="conf">conf {(item.confidence * 100).toFixed(0)}%</span>
         </header>
 
-        {#if p.proposed_action.matches.length > 0}
-          <label>
-            Match
-            <select bind:value={picks[p.id]!.ingredient_id}>
-              {#each p.proposed_action.matches as m (m.ingredient_id)}
-                <option value={m.ingredient_id}>
-                  {m.name} ({m.matched_via} {(m.score * 100).toFixed(0)}%)
-                </option>
-              {/each}
-            </select>
-          </label>
-        {:else}
-          <p class="warn">
-            No matching ingredient. Skip for now or add the ingredient via the catalogue, then re-run.
-          </p>
-        {/if}
+        <label>
+          Match
+          {#if picks[p.id]?.ingredient_id}
+            <div class="picked-row">
+              <span class="picked-name">{picks[p.id]?.ingredient_label}</span>
+              <button
+                type="button"
+                class="picked-change"
+                onclick={() => {
+                  picks[p.id]!.ingredient_id = null;
+                }}
+              >change</button>
+            </div>
+          {:else}
+            <IngredientSearch
+              onpick={(m) => {
+                if (m) {
+                  picks[p.id]!.ingredient_id = m.id;
+                  picks[p.id]!.ingredient_label = m.name;
+                }
+              }}
+              placeholder={`Search or create ingredient (Claude said: ${item.name_de})`}
+              allowCreate={true}
+            />
+            {#if p.proposed_action.matches.length > 0}
+              <div class="suggested">
+                Suggested:
+                {#each p.proposed_action.matches as m (m.ingredient_id)}
+                  <button
+                    type="button"
+                    class="chip"
+                    onclick={() => {
+                      picks[p.id]!.ingredient_id = m.ingredient_id;
+                      picks[p.id]!.ingredient_label = m.name;
+                    }}
+                  >{m.name} <span class="score">{(m.score * 100).toFixed(0)}%</span></button>
+                {/each}
+              </div>
+            {/if}
+          {/if}
+        </label>
 
         <div class="row">
           <label class="grow">
@@ -306,6 +334,53 @@
     color: #f0c674;
     font-size: 0.85rem;
     margin: 0;
+  }
+  .picked-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #0a0a0a;
+    border: 1px solid #2a2a2a;
+    border-radius: 6px;
+    padding: 0.5rem 0.7rem;
+  }
+  .picked-name {
+    color: #f5f5f5;
+  }
+  .picked-change {
+    background: transparent;
+    border: 0;
+    color: #888;
+    font: inherit;
+    font-size: 0.85rem;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+  .suggested {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-top: 0.4rem;
+    align-items: center;
+    color: #888;
+    font-size: 0.8rem;
+  }
+  .chip {
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    color: #ddd;
+    padding: 0.2rem 0.55rem;
+    border-radius: 999px;
+    font: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+  }
+  .chip:hover {
+    background: #1f2a3a;
+  }
+  .score {
+    color: #888;
+    margin-left: 0.3rem;
   }
   .actions {
     margin-top: 1rem;
