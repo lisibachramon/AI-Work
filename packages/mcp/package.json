@@ -4,6 +4,16 @@
   "private": true,
   "type": "module",
   "main": "./dist/stdio.js",
+  "exports": {
+    "./tools": {
+      "types": "./dist/tools/index.d.ts",
+      "import": "./dist/tools/index.js"
+    },
+    "./jsonschema": {
+      "types": "./dist/jsonschema.d.ts",
+      "import": "./dist/jsonschema.js"
+    }
+  },
   "bin": {
     "kitchen-mcp": "./dist/stdio.js"
   },

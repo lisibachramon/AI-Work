@@ -9,7 +9,20 @@ import { matchIngredient } from "../services/ingestion/matcher.js";
 const SearchQuery = z.object({
   q: z.string().min(1).max(120),
   limit: z.coerce.number().int().positive().max(50).default(10),
+  // Opt-in for now: only compute a query embedding when the caller explicitly
+  // asks for it, so we don't pay the Ollama round-trip on every keystroke.
+  semantic: z
+    .union([z.literal("true"), z.literal("false"), z.boolean()])
+    .optional()
+    .transform((v) => v === true || v === "true"),
 });
+
+// Threshold above which we trust the cheap trigram/alias/prefix path and
+// don't bother computing a query embedding.
+const HIGH_CONFIDENCE_SCORE = 0.85;
+// Below this query length the embedding lookup tends to be noise; bge-m3
+// gives weak signal on 1–3 character fragments.
+const MIN_SEMANTIC_QUERY_LEN = 4;
 
 export async function registerIngredientRoutes(app: FastifyInstance) {
   app.get("/api/ingredients/search", async (req, reply) => {
@@ -17,11 +30,38 @@ export async function registerIngredientRoutes(app: FastifyInstance) {
     if (!userId) return;
     const parsed = SearchQuery.safeParse(req.query);
     if (!parsed.success) return reply.code(400).send(parsed.error.flatten());
-    const results = await matchIngredient(app.db, {
-      userId,
-      query: parsed.data.q,
-      limit: parsed.data.limit,
-    });
+
+    const { q, limit, semantic } = parsed.data;
+
+    // First pass: cheap lexical match. If we already have a high-confidence
+    // canonical/alias/prefix hit, semantic search adds nothing.
+    let results = await matchIngredient(app.db, { userId, query: q, limit });
+
+    const topScore = results[0]?.score ?? 0;
+    const shouldSemantic =
+      semantic &&
+      q.trim().length >= MIN_SEMANTIC_QUERY_LEN &&
+      topScore < HIGH_CONFIDENCE_SCORE;
+
+    if (shouldSemantic) {
+      try {
+        const embedRes = await app.llm.embed({ task: "embeddings", texts: [q] });
+        const vec = embedRes.vectors[0];
+        if (vec && vec.length > 0) {
+          results = await matchIngredient(app.db, {
+            userId,
+            query: q,
+            limit,
+            queryEmbedding: vec,
+          });
+        }
+      } catch (err) {
+        // Semantic is best-effort: if Ollama is down we still return the
+        // lexical results rather than blowing up the search endpoint.
+        app.log.warn({ err }, "semantic search: ollama embed failed, falling back to lexical");
+      }
+    }
+
     return { results };
   });
 

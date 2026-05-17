@@ -44,9 +44,15 @@ importers:
       '@kitchen/db':
         specifier: workspace:*
         version: link:../db
+      '@kitchen/mcp':
+        specifier: workspace:*
+        version: link:../mcp
       '@kitchen/shared':
         specifier: workspace:*
         version: link:../shared
+      '@modelcontextprotocol/sdk':
+        specifier: ^1.0.4
+        version: 1.29.0(zod@3.25.76)
       argon2:
         specifier: ^0.41.1
         version: 0.41.1

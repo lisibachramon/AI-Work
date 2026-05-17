@@ -15,6 +15,9 @@ import { registerRecipeRoutes } from "./routes/recipes.js";
 import { registerIngestRoutes } from "./routes/ingest.js";
 import { registerShoppingRoutes } from "./routes/shopping.js";
 import { registerEssentialsRoutes } from "./routes/essentials.js";
+import { registerEmbeddingsRoutes } from "./routes/embeddings.js";
+import { registerMcpTokenRoutes } from "./routes/mcp-tokens.js";
+import { registerMcpHttpRoutes } from "./routes/mcp.js";
 
 declare module "fastify" {
   interface FastifyInstance {
@@ -67,6 +70,9 @@ async function main() {
   await registerIngestRoutes(app);
   await registerShoppingRoutes(app);
   await registerEssentialsRoutes(app);
+  await registerEmbeddingsRoutes(app);
+  await registerMcpTokenRoutes(app);
+  await registerMcpHttpRoutes(app);
 
   await app.listen({ host: "0.0.0.0", port: env.API_PORT });
   app.log.info({ port: env.API_PORT }, "api up");
