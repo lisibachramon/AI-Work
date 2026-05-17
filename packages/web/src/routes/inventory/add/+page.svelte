@@ -32,6 +32,13 @@
       error = err instanceof ApiError ? err.message : "Could not load locations.";
     }
 
+    // Optional ?ingredient_id=...&ingredient_name=... handoff from /catalog.
+    const ingId = page.url.searchParams.get("ingredient_id");
+    const ingName = page.url.searchParams.get("ingredient_name");
+    if (ingId && ingName) {
+      onPick({ id: ingId, name: ingName });
+    }
+
     // Optional ?gtin=... handoff from /scan.
     const gtin = page.url.searchParams.get("gtin");
     if (gtin) {

@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { z } from "zod";
 import { IngredientInput } from "@kitchen/shared/schemas";
 import { ingredients } from "@kitchen/db/schema";
@@ -63,6 +63,36 @@ export async function registerIngredientRoutes(app: FastifyInstance) {
     }
 
     return { results };
+  });
+
+  app.get("/api/ingredients", async (req, reply) => {
+    const userId = requireAuth(req, reply);
+    if (!userId) return;
+    const ListQuery = z.object({
+      category: z.string().optional(),
+      limit: z.coerce.number().int().positive().max(500).default(200),
+    });
+    const parsed = ListQuery.safeParse(req.query);
+    if (!parsed.success) return reply.code(400).send(parsed.error.flatten());
+    const conditions = [eq(ingredients.user_id, userId)];
+    if (parsed.data.category) {
+      conditions.push(sql`${ingredients.category}::text = ${parsed.data.category}`);
+    }
+    return app.db
+      .select({
+        id: ingredients.id,
+        canonical_name_de: ingredients.canonical_name_de,
+        canonical_name_en: ingredients.canonical_name_en,
+        category: ingredients.category,
+        default_unit: ingredients.default_unit,
+        shelf_life_days: ingredients.shelf_life_days,
+        typical_piece_weight_g: ingredients.typical_piece_weight_g,
+        density_g_per_ml: ingredients.density_g_per_ml,
+      })
+      .from(ingredients)
+      .where(and(...conditions))
+      .orderBy(ingredients.canonical_name_de)
+      .limit(parsed.data.limit);
   });
 
   app.post("/api/ingredients", async (req, reply) => {

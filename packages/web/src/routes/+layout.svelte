@@ -33,6 +33,7 @@
   <header>
     <nav>
       <a href="/inventory/" class:active={page.url.pathname.startsWith("/inventory")}>Pantry</a>
+      <a href="/catalog/" class:active={page.url.pathname.startsWith("/catalog")}>Catalog</a>
       <a href="/scan/" class:active={page.url.pathname.startsWith("/scan")}>Scan</a>
       <a href="/cook/" class:active={page.url.pathname.startsWith("/cook")}>Cook</a>
       <a href="/shopping/" class:active={page.url.pathname.startsWith("/shopping")}>Shop</a>

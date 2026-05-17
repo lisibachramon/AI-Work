@@ -294,6 +294,10 @@ export async function registerRecipeRoutes(app: FastifyInstance) {
       }
 
       const needed = Number(ri.quantity) * scale;
+      // Defensive: Zod's schema lets quantity be 0 or negative (Claude
+      // sometimes emits 0 for "to taste"). Skip those rather than letting
+      // them propagate as NaN/-inf through the decrement loop.
+      if (!Number.isFinite(needed) || needed <= 0) continue;
       const recipeUnit = ri.unit as StorageUnit;
       const conv = {
         density_g_per_ml: ri.density_g_per_ml === null ? null : Number(ri.density_g_per_ml),
