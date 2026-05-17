@@ -40,8 +40,29 @@ export async function registerRecipeRoutes(app: FastifyInstance) {
     }
 
     const filters = parsed.data.filters ?? {};
+    // Resolve must_use UUIDs to canonical names so the LLM has something
+    // meaningful to bias against. The IDs alone are opaque.
+    let mustUseNames: string[] = [];
+    if (filters.must_use?.length) {
+      const rows = await app.db
+        .select({ id: ingredients.id, name: ingredients.canonical_name_de })
+        .from(ingredients)
+        .where(
+          and(
+            eq(ingredients.user_id, userId),
+            sql`${ingredients.id} = ANY(${filters.must_use}::uuid[])`,
+          ),
+        );
+      mustUseNames = rows.map((r) => r.name);
+    }
     const system = buildSystemPrompt();
-    const prompt = buildUserPrompt(snap, filters, parsed.data.prompt_hint, parsed.data.count);
+    const prompt = buildUserPrompt(
+      snap,
+      filters,
+      mustUseNames,
+      parsed.data.prompt_hint,
+      parsed.data.count,
+    );
 
     try {
       const result = await app.llm.complete({
@@ -439,6 +460,7 @@ Regeln:
 function buildUserPrompt(
   snap: Awaited<ReturnType<typeof buildPantrySnapshot>>,
   filters: z.infer<typeof RecipeFilters>,
+  mustUseNames: string[],
   hint: string | undefined,
   count: number,
 ): string {
@@ -468,7 +490,9 @@ function buildUserPrompt(
   if (filters.healthiness) lines.push(`- healthiness: ${filters.healthiness}`);
   if (filters.cuisine?.length) lines.push(`- cuisine: ${filters.cuisine.join(", ")}`);
   if (filters.servings) lines.push(`- servings: ${filters.servings}`);
-  if (filters.must_use?.length) lines.push(`- must_use: ${filters.must_use.join(", ")}`);
+  if (mustUseNames.length > 0) {
+    lines.push(`- must_use (zwingend einbauen): ${mustUseNames.join(", ")}`);
+  }
   if (filters.avoid?.length) lines.push(`- avoid: ${filters.avoid.join(", ")}`);
   if (filters.leftover_friendly) lines.push(`- gut als Resteverwertung`);
   if (hint) {
