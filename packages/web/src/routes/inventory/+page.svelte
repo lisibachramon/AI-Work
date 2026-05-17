@@ -200,7 +200,7 @@
           {#each grouped[loc.id]! as it (it.id)}
             {@const d = daysUntil(it.expiry_date)}
             <li>
-              <div class="name">{it.ingredient.canonical_name_de}</div>
+              <a class="name" href={`/inventory/${it.id}/`}>{it.ingredient.canonical_name_de}</a>
               <div class="meta">
                 <button
                   class="qty"
@@ -338,6 +338,11 @@
   }
   .name {
     font-weight: 500;
+    color: inherit;
+    text-decoration: none;
+  }
+  .name:hover {
+    color: #aac8e7;
   }
   .meta {
     display: flex;
