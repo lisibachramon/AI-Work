@@ -67,7 +67,7 @@ async function main() {
   await registerStockRoutes(app);
   await registerBarcodeRoutes(app);
   await registerRecipeRoutes(app);
-  await registerIngestRoutes(app);
+  await registerIngestRoutes(app, env);
   await registerShoppingRoutes(app);
   await registerEssentialsRoutes(app);
   await registerEmbeddingsRoutes(app);
