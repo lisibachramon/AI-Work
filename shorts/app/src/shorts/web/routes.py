@@ -10,6 +10,8 @@ from sqlalchemy import desc, func, select
 from shorts.config import get_settings
 from shorts.db.models import Affiliate, Candidate, Performance, Published, get_sessionmaker
 from shorts.jobs.analytics_sync import run as analytics_run
+from shorts.jobs.longform_dispatcher import find_qualifying_shorts
+from shorts.jobs.worker import _dispatch_longform, _run_longform
 from shorts.jobs.worker import _run as run_worker
 from shorts.monetization import AffiliateInjector, load_rules
 
@@ -61,18 +63,19 @@ async def health_whisper() -> dict:
 
 
 @router.get("/history")
-async def history(limit: int = 25) -> list[dict]:
+async def history(limit: int = 25, kind: str | None = None) -> list[dict]:
     Session = get_sessionmaker()
     async with Session() as session:
-        rows = (
-            await session.execute(
-                select(Published).order_by(desc(Published.created_at)).limit(limit)
-            )
-        ).scalars().all()
+        q = select(Published).order_by(desc(Published.created_at)).limit(limit)
+        if kind:
+            q = q.where(Published.kind == kind)
+        rows = (await session.execute(q)).scalars().all()
         return [
             {
                 "id": r.id,
                 "locale": r.locale,
+                "kind": r.kind,
+                "parent_published_id": r.parent_published_id,
                 "title": r.title,
                 "youtube_video_id": r.youtube_video_id,
                 "privacy": r.privacy,
@@ -103,6 +106,8 @@ async def queue(limit: int = 25) -> list[dict]:
                 "channel": r.channel,
                 "url": r.url,
                 "velocity": r.velocity,
+                "rising_score": r.extra.get("rising_score") if isinstance(r.extra, dict) else None,
+                "rising_source": r.extra.get("rising_source") if isinstance(r.extra, dict) else None,
             }
             for r in rows
         ]
@@ -118,6 +123,39 @@ async def jobs_run(locale: str, background: BackgroundTasks, dry_run: bool = Fal
 async def jobs_analytics_sync(background: BackgroundTasks) -> dict:
     background.add_task(analytics_run)
     return {"accepted": True}
+
+
+@router.get("/longform/candidates")
+async def longform_candidates() -> list[dict]:
+    """Shorts that currently qualify for a long-form companion render."""
+    Session = get_sessionmaker()
+    async with Session() as session:
+        jobs = await find_qualifying_shorts(session)
+    return [
+        {
+            "parent_published_id": j.parent_published_id,
+            "candidate_id": j.candidate_id,
+            "locale": j.locale,
+            "total_views": j.total_views,
+        }
+        for j in jobs
+    ]
+
+
+@router.post("/longform/run")
+async def longform_run(
+    background: BackgroundTasks, published_id: int, dry_run: bool = False
+) -> dict:
+    """Render the long-form for a specific Short. Async — returns 202 immediately."""
+    background.add_task(_run_longform, parent_published_id=published_id, dry_run=dry_run)
+    return {"accepted": True, "parent_published_id": published_id, "dry_run": dry_run}
+
+
+@router.post("/longform/dispatch")
+async def longform_dispatch(background: BackgroundTasks, dry_run: bool = False) -> dict:
+    """Run the scan-and-queue scheduler step on demand."""
+    background.add_task(_dispatch_longform, dry_run=dry_run)
+    return {"accepted": True, "dry_run": dry_run}
 
 
 @router.get("/revenue")

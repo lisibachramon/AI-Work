@@ -31,18 +31,29 @@ LOCALE_LANGUAGE = {
 }
 
 
+ScriptKind = str  # "short" | "longform"
+
+
+@dataclass(slots=True)
+class Chapter:
+    title: str
+    body: str  # spoken text for this chapter
+
+
 @dataclass(slots=True)
 class CommentaryScript:
-    title: str  # YouTube title, ≤90 chars, must include #shorts
-    body: str  # the spoken VO, 20–40s of speech
+    title: str  # YouTube title
+    body: str  # the spoken VO (concatenation of chapters for long-form)
     description: str  # YouTube description with attribution
     tags: list[str]
-    hook: str  # the chosen first-3s opener (also the first sentence of body)
+    hook: str
+    kind: ScriptKind = "short"
     title_variants: list[str] = field(default_factory=list)
     hook_variants: list[str] = field(default_factory=list)
+    chapters: list[Chapter] = field(default_factory=list)
 
 
-def _system(*, n_titles: int, n_hooks: int) -> str:
+def _system_short(*, n_titles: int, n_hooks: int) -> str:
     return f"""You write short-form commentary scripts for YouTube Shorts.
 
 Output JSON only, with keys: title, body, description, tags, title_variants, hook_variants.
@@ -68,6 +79,32 @@ The first sentence of "body" MUST be one of the entries in "hook_variants".
 """
 
 
+def _system_longform(*, n_titles: int) -> str:
+    return f"""You write long-form video essay scripts (5–10 minutes spoken) for YouTube.
+
+Output JSON only, with keys: title, chapters, description, tags, title_variants.
+
+Constraints:
+- "chapters" is an array of 5–8 chapter objects. Each object has:
+    "title" (≤60 chars; reads cleanly in a description timestamp)
+    "body" (the spoken VO for that chapter, 80–180 words)
+  Together the chapters should total roughly 700–1500 words.
+- The first chapter is an intro with a strong hook. The last chapter is
+  a conclusion / call-to-subscribe.
+- Tight, opinionated commentary in the requested language. Do NOT
+  re-narrate the source — interpret, contextualise, take positions.
+- "title" is ≤80 characters. Do NOT include "#shorts".
+- "title_variants" is exactly {n_titles} alternative titles, ≤80 chars
+  each, no "#shorts". Different framings (curiosity, list-style, deep-
+  dive, controversy).
+- "description" cites the source (channel + URL), includes the line
+  "Commentary, criticism & news — fair use.", and ends with the marker
+  "[CHAPTERS]" on its own line — the worker fills in chapter
+  timestamps after it knows the VO timing. Don't add timestamps yourself.
+- "tags" is 8–15 lowercase strings, no '#'.
+"""
+
+
 class ScriptWriter:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
@@ -84,6 +121,7 @@ class ScriptWriter:
         source_channel: str,
         source_url: str,
         winners: list[Winner] | None = None,
+        kind: ScriptKind = "short",
     ) -> CommentaryScript:
         from shorts.analytics.feedback import format_for_prompt
 
@@ -97,14 +135,20 @@ class ScriptWriter:
             + (f"\n{winners_block}\n" if winners_block else "")
             + "\nWrite the JSON now."
         )
+        system = (
+            _system_longform(n_titles=self.n_titles)
+            if kind == "longform"
+            else _system_short(n_titles=self.n_titles, n_hooks=self.n_hooks)
+        )
+        max_tokens = 8000 if kind == "longform" else 1500
         msg = await self.client.messages.create(
             model=self.model,
-            max_tokens=1500,
-            system=_system(n_titles=self.n_titles, n_hooks=self.n_hooks),
+            max_tokens=max_tokens,
+            system=system,
             messages=[{"role": "user", "content": user}],
         )
         text = "".join(b.text for b in msg.content if getattr(b, "type", "") == "text")
-        return _parse(text, fallback_attribution=(source_channel, source_url))
+        return _parse(text, fallback_attribution=(source_channel, source_url), kind=kind)
 
 
 def _make_client(s: Settings) -> anthropic.AsyncAnthropic:
@@ -121,7 +165,9 @@ def _make_client(s: Settings) -> anthropic.AsyncAnthropic:
     )
 
 
-def _parse(text: str, *, fallback_attribution: tuple[str, str]) -> CommentaryScript:
+def _parse(
+    text: str, *, fallback_attribution: tuple[str, str], kind: ScriptKind = "short"
+) -> CommentaryScript:
     import json
 
     cleaned = text.strip()
@@ -135,6 +181,29 @@ def _parse(text: str, *, fallback_attribution: tuple[str, str]) -> CommentaryScr
         description = f"{description}\n\nSource: {channel} — {url}".strip()
     if "fair use" not in description.lower():
         description = f"{description}\n\nCommentary, criticism & news — fair use."
+
+    if kind == "longform":
+        chapters_raw = data.get("chapters", [])
+        chapters = [
+            Chapter(title=str(c.get("title", "")).strip()[:60], body=str(c.get("body", "")).strip())
+            for c in chapters_raw
+            if c.get("body")
+        ]
+        body = "\n\n".join(c.body for c in chapters).strip()
+        title = str(data["title"]).strip()[:80]
+        title_variants = [str(t).strip()[:80] for t in data.get("title_variants", []) if t]
+        hook = chapters[0].body.split(".")[0] if chapters else body.split(".")[0]
+        return CommentaryScript(
+            title=title,
+            body=body,
+            description=description,
+            tags=[str(t).lstrip("#").lower() for t in data.get("tags", [])][:15],
+            hook=hook,
+            kind="longform",
+            title_variants=title_variants,
+            chapters=chapters,
+        )
+
     title = _ensure_shorts(str(data["title"]).strip())[:90]
     body = str(data["body"]).strip()
     title_variants = [
@@ -148,6 +217,7 @@ def _parse(text: str, *, fallback_attribution: tuple[str, str]) -> CommentaryScr
         description=description,
         tags=[str(t).lstrip("#").lower() for t in data.get("tags", [])][:12],
         hook=hook,
+        kind="short",
         title_variants=title_variants,
         hook_variants=hook_variants,
     )

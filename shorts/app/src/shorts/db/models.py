@@ -48,13 +48,15 @@ class Candidate(Base):
 
 
 class Published(Base):
-    """Record of a rendered + uploaded short."""
+    """Record of a rendered + uploaded video (short OR longform)."""
 
     __tablename__ = "published"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     candidate_id: Mapped[int] = mapped_column(Integer)
     locale: Mapped[str] = mapped_column(String(8))
+    kind: Mapped[str] = mapped_column(String(16), default="short")  # short | longform
+    parent_published_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     title: Mapped[str] = mapped_column(String(256))
     hook: Mapped[str | None] = mapped_column(String(512), nullable=True)
     youtube_video_id: Mapped[str | None] = mapped_column(String(64), nullable=True)

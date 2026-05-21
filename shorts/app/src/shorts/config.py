@@ -101,6 +101,23 @@ class Settings(BaseSettings):
         default_factory=lambda: ["9x16", "1x1", "16x9"], alias="RENDER_ASPECTS"
     )
 
+    # --- Rising-trend discovery (first-mover advantage) ---
+    rising_trends_enabled: bool = Field(default=True, alias="RISING_TRENDS_ENABLED")
+    rising_topics_per_locale: int = Field(default=8, alias="RISING_TOPICS_PER_LOCALE")
+    rising_window_hours: int = Field(default=24, alias="RISING_WINDOW_HOURS")
+
+    # --- Long-form companion (10–50× per-video revenue when a Short pops) ---
+    longform_enabled: bool = Field(default=False, alias="LONGFORM_ENABLED")
+    # A Short crossing this view total within LONGFORM_TRIGGER_DAYS auto-spawns
+    # a long-form companion. 25k is a reasonable default for a new channel.
+    longform_trigger_views: int = Field(default=25_000, alias="LONGFORM_TRIGGER_VIEWS")
+    longform_trigger_days: int = Field(default=3, alias="LONGFORM_TRIGGER_DAYS")
+    longform_upload_privacy: str = Field(default="private", alias="LONGFORM_UPLOAD_PRIVACY")
+    # YouTube category for long-form — "Entertainment" by default, "News & Politics" is 25.
+    longform_category_id: str = Field(default="24", alias="LONGFORM_CATEGORY_ID")
+    # Cap the dispatcher so we don't blow daily YouTube upload quota on long-forms.
+    max_longform_per_day: int = Field(default=2, alias="MAX_LONGFORM_PER_DAY")
+
     # --- pipeline limits (fair-use posture; do not raise without legal review) ---
     max_source_clip_seconds: float = Field(
         default=8.0, alias="MAX_SOURCE_CLIP_SECONDS"

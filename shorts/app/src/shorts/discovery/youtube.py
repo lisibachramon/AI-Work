@@ -29,6 +29,8 @@ class YouTubeItem:
     view_count: int
     published_at: datetime
     locale: str
+    rising_score: float = 0.0
+    rising_source: str = ""  # "" | "reddit" | "google_trends"
 
     @property
     def url(self) -> str:
@@ -58,6 +60,60 @@ class YouTubeDiscovery:
         r.raise_for_status()
         out: list[YouTubeItem] = []
         for item in r.json().get("items", []):
+            snippet = item["snippet"]
+            stats = item.get("statistics", {})
+            out.append(
+                YouTubeItem(
+                    video_id=item["id"],
+                    title=snippet["title"],
+                    channel=snippet["channelTitle"],
+                    view_count=int(stats.get("viewCount", 0)),
+                    published_at=_parse_iso8601(snippet["publishedAt"]),
+                    locale=locale,
+                )
+            )
+        return out
+
+    async def search_recent(
+        self,
+        query: str,
+        *,
+        locale: str,
+        published_after: datetime,
+        max_results: int = 5,
+    ) -> list[YouTubeItem]:
+        """Resolve a topic string to a recent, high-view video on YouTube.
+
+        Used by the rising-trends discovery path: take a Reddit / Google
+        Trends topic, find the dominant YouTube coverage video for it. One
+        search.list call is 100 quota units — pricier than mostPopular, so
+        keep max_results low.
+        """
+        region, hl = LOCALE_TO_REGION.get(locale, ("US", "en"))
+        search_params = {
+            "part": "snippet",
+            "type": "video",
+            "q": query,
+            "regionCode": region,
+            "relevanceLanguage": hl,
+            "order": "viewCount",
+            "publishedAfter": published_after.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "maxResults": max_results,
+            "key": self.api_key,
+        }
+        r = await self._client.get(f"{self.BASE_URL}/search", params=search_params)
+        r.raise_for_status()
+        ids = [item["id"]["videoId"] for item in r.json().get("items", []) if "videoId" in item["id"]]
+        if not ids:
+            return []
+        # Hydrate stats with a single videos.list call (1 quota unit).
+        r2 = await self._client.get(
+            f"{self.BASE_URL}/videos",
+            params={"part": "snippet,statistics", "id": ",".join(ids), "key": self.api_key},
+        )
+        r2.raise_for_status()
+        out: list[YouTubeItem] = []
+        for item in r2.json().get("items", []):
             snippet = item["snippet"]
             stats = item.get("statistics", {})
             out.append(
