@@ -1,0 +1,125 @@
+# Production deployment for the shorts pipeline. Mirrors the kitchen
+# compose so jwilder/nginx-proxy + letsencrypt-companion can route the
+# vhost to the api container. Postgres and the worker are private.
+#
+# Pre-reqs on the server (one-time):
+#   - DNS A record for SHORTS_VHOST is live
+#   - The main stack's `proxy_default` network is already running
+#   - .env in this directory filled out per .env.example
+#   - GHCR_PAT logged in via `docker login ghcr.io` so this stack can pull
+#
+# Routine deploy is driven by .github/workflows/deploy-shorts.yml.
+
+name: shorts
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - shorts-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks:
+      - shorts-internal
+
+  api:
+    image: ${SHORTS_API_IMAGE:-ghcr.io/lisibachramon/ai-work/shorts-api:latest}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      VIRTUAL_HOST: ${SHORTS_VHOST}
+      LETSENCRYPT_HOST: ${SHORTS_VHOST}
+      LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL}
+      VIRTUAL_PORT: "8080"
+
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      PUBLIC_BASE_URL: https://${SHORTS_VHOST}
+
+      LOCALES: ${LOCALES:-de,en-US,es,in}
+      RUNS_PER_DAY: ${RUNS_PER_DAY:-4}
+      MAX_UPLOADS_PER_DAY: ${MAX_UPLOADS_PER_DAY:-6}
+
+      YOUTUBE_API_KEY: ${YOUTUBE_API_KEY}
+      APIFY_TOKEN: ${APIFY_TOKEN:-}
+      PEXELS_API_KEY: ${PEXELS_API_KEY:-}
+      PLEX_BASE_URL: ${PLEX_BASE_URL:-}
+      PLEX_TOKEN: ${PLEX_TOKEN:-}
+
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      CLAUDE_OAUTH_TOKEN: ${CLAUDE_OAUTH_TOKEN:-}
+      ANTHROPIC_OAUTH_BETA: ${ANTHROPIC_OAUTH_BETA:-oauth-2025-04-20}
+      ANTHROPIC_SCRIPT_MODEL: ${ANTHROPIC_SCRIPT_MODEL:-claude-sonnet-4-6}
+
+      ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY:-}
+      WHISPER_BASE_URL: ${WHISPER_BASE_URL:-http://whisper:9000}
+
+      YT_CLIENT_ID: ${YT_CLIENT_ID}
+      YT_CLIENT_SECRET: ${YT_CLIENT_SECRET}
+      YT_REFRESH_TOKEN: ${YT_REFRESH_TOKEN}
+      YT_UPLOAD_PRIVACY: ${YT_UPLOAD_PRIVACY:-private}
+      YT_CATEGORY_ID: ${YT_CATEGORY_ID:-24}
+
+      MAX_SOURCE_CLIP_SECONDS: ${MAX_SOURCE_CLIP_SECONDS:-8}
+      TARGET_DURATION_SECONDS: ${TARGET_DURATION_SECONDS:-40}
+    volumes:
+      - shorts-outbox:/data
+      - shorts-tts-models:/models
+      - shorts-cache:/cache
+      # If you want to use Plex B-roll, mount the Plex media library read-only
+      # at the same path Plex reports for the parts (e.g. /media). Uncomment
+      # and adjust:
+      # - /srv/plex/media:/media:ro
+    networks:
+      - shorts-internal
+      - proxy_default
+
+  backup:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - shorts-backups:/backups
+      - shorts-outbox:/outbox:ro
+    networks:
+      - shorts-internal
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        apk add --no-cache rsync gzip >/dev/null 2>&1 || true
+        while true; do
+          ts=$$(date +%Y%m%d-%H%M%S)
+          mkdir -p /backups/db /backups/outbox
+          PGPASSWORD=$$POSTGRES_PASSWORD pg_dump -h postgres -U $$POSTGRES_USER $$POSTGRES_DB | gzip > /backups/db/dump-$$ts.sql.gz && \
+            ls -t /backups/db/dump-*.sql.gz | tail -n +8 | xargs -r rm -f
+          rsync -a --delete /outbox/ /backups/outbox/
+          sleep 86400
+        done
+
+volumes:
+  shorts-postgres-data:
+  shorts-outbox:
+  shorts-tts-models:
+  shorts-cache:
+  shorts-backups:
+
+networks:
+  shorts-internal:
+    driver: bridge
+  proxy_default:
+    external: true
