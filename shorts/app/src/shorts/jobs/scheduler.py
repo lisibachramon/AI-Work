@@ -8,6 +8,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from shorts.config import get_settings
+from shorts.jobs.analytics_sync import run as analytics_run
 from shorts.jobs.worker import _run
 
 log = logging.getLogger("shorts.scheduler")
@@ -31,6 +32,16 @@ def build_scheduler() -> AsyncIOScheduler:
                 max_instances=1,
             )
             log.info("scheduled locale=%s at %02d:%02d UTC", locale, hr, _offset_minute(locale))
+    # Daily analytics sync at 04:15 UTC (well after the last upload window).
+    sched.add_job(
+        analytics_run,
+        CronTrigger(hour=4, minute=15),
+        id="analytics-sync",
+        replace_existing=True,
+        misfire_grace_time=3600,
+        coalesce=True,
+        max_instances=1,
+    )
     return sched
 
 

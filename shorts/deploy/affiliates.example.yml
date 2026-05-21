@@ -1,0 +1,22 @@
+# Example affiliate rules. Drop a populated copy of this file at
+# /home/serverlisibachnet/docker/shorts/assets/affiliates.yml on the
+# server (the shorts-assets volume mounts there). It is hot-loaded —
+# no restart needed.
+#
+# Each rule fires when ANY of its `match` patterns (word-boundary,
+# case-insensitive) appears in the script body or source title. At most
+# one match per slug per video, so a video with three GoPro mentions
+# only gets one GoPro link.
+
+rules:
+  - slug: gopro-hero
+    match: ["gopro", "action camera"]
+    amazon_asin: "B0BFP3PCQ4"        # Amazon links inherit AMAZON_TAG from .env
+
+  - slug: claude-pro
+    match: ["claude", "anthropic", "claude pro"]
+    url: "https://claude.ai/referral/your-code"
+
+  - slug: nordvpn
+    match: ["vpn", "nordvpn"]
+    url: "https://nordvpn.sjv.io/your-affiliate-link"

@@ -68,6 +68,23 @@ services:
       YT_REFRESH_TOKEN: ${YT_REFRESH_TOKEN}
       YT_UPLOAD_PRIVACY: ${YT_UPLOAD_PRIVACY:-private}
       YT_CATEGORY_ID: ${YT_CATEGORY_ID:-24}
+      YT_CHANNELS_JSON: ${YT_CHANNELS_JSON:-}
+
+      # Revenue / growth features
+      CHANNEL_NAME: ${CHANNEL_NAME:-}
+      UPLOAD_CUSTOM_THUMBNAIL: ${UPLOAD_CUSTOM_THUMBNAIL:-true}
+      TITLE_VARIANTS: ${TITLE_VARIANTS:-3}
+      HOOK_VARIANTS: ${HOOK_VARIANTS:-3}
+      RENDER_ASPECTS: ${RENDER_ASPECTS:-9x16,1x1,16x9}
+      YT_ANALYTICS_ENABLED: ${YT_ANALYTICS_ENABLED:-false}
+      YT_WINNER_LOOKBACK_DAYS: ${YT_WINNER_LOOKBACK_DAYS:-30}
+      YT_WINNER_MIN_VIEWS: ${YT_WINNER_MIN_VIEWS:-5000}
+      POST_PINNED_COMMENT: ${POST_PINNED_COMMENT:-false}
+      CTA_COMMENT_TEMPLATE: ${CTA_COMMENT_TEMPLATE:-}
+      AFFILIATES_YAML_PATH: ${AFFILIATES_YAML_PATH:-/assets/affiliates.yml}
+      LINK_REDIRECT_DOMAIN: ${LINK_REDIRECT_DOMAIN:-}
+      AMAZON_TAG: ${AMAZON_TAG:-}
+      HOST_VOICE_SAMPLE_PATH: ${HOST_VOICE_SAMPLE_PATH:-/assets/host_voice.wav}
 
       MAX_SOURCE_CLIP_SECONDS: ${MAX_SOURCE_CLIP_SECONDS:-8}
       TARGET_DURATION_SECONDS: ${TARGET_DURATION_SECONDS:-40}
@@ -75,6 +92,7 @@ services:
       - shorts-outbox:/data
       - shorts-tts-models:/models
       - shorts-cache:/cache
+      - shorts-assets:/assets
       # If you want to use Plex B-roll, mount the Plex media library read-only
       # at the same path Plex reports for the parts (e.g. /media). Uncomment
       # and adjust:
@@ -116,6 +134,7 @@ volumes:
   shorts-outbox:
   shorts-tts-models:
   shorts-cache:
+  shorts-assets:
   shorts-backups:
 
 networks:

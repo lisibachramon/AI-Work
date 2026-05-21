@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import httpx
-from fastapi import APIRouter, BackgroundTasks
-from sqlalchemy import desc, select
+from fastapi import APIRouter, BackgroundTasks, Request
+from fastapi.responses import RedirectResponse
+from sqlalchemy import desc, func, select
 
 from shorts.config import get_settings
-from shorts.db.models import Candidate, Published, get_sessionmaker
+from shorts.db.models import Affiliate, Candidate, Performance, Published, get_sessionmaker
+from shorts.jobs.analytics_sync import run as analytics_run
 from shorts.jobs.worker import _run as run_worker
+from shorts.monetization import AffiliateInjector, load_rules
 
 router = APIRouter()
 
@@ -109,3 +112,77 @@ async def queue(limit: int = 25) -> list[dict]:
 async def jobs_run(locale: str, background: BackgroundTasks, dry_run: bool = False) -> dict:
     background.add_task(run_worker, locale=locale, dry_run=dry_run, limit=1)
     return {"accepted": True, "locale": locale, "dry_run": dry_run}
+
+
+@router.post("/jobs/analytics-sync")
+async def jobs_analytics_sync(background: BackgroundTasks) -> dict:
+    background.add_task(analytics_run)
+    return {"accepted": True}
+
+
+@router.get("/revenue")
+async def revenue(days: int = 30) -> dict:
+    """Aggregate per-locale revenue for the last `days` days."""
+    Session = get_sessionmaker()
+    async with Session() as session:
+        rows = (
+            await session.execute(
+                select(
+                    Published.locale,
+                    func.sum(Performance.views).label("views"),
+                    func.sum(Performance.subscribers_gained).label("subs"),
+                    func.sum(Performance.estimated_revenue_usd).label("revenue"),
+                    func.count(func.distinct(Published.id)).label("uploads"),
+                )
+                .join(Performance, Performance.youtube_video_id == Published.youtube_video_id)
+                .group_by(Published.locale)
+            )
+        ).all()
+        clicks = (
+            await session.execute(
+                select(Affiliate.slug, func.count(Affiliate.id)).group_by(Affiliate.slug)
+            )
+        ).all()
+    return {
+        "by_locale": [
+            {
+                "locale": r[0],
+                "views": int(r[1] or 0),
+                "subscribers": int(r[2] or 0),
+                "estimated_revenue_usd": float(r[3] or 0),
+                "uploads": int(r[4] or 0),
+            }
+            for r in rows
+        ],
+        "affiliate_clicks": {row[0]: int(row[1]) for row in clicks},
+        "window_days": days,
+    }
+
+
+@router.get("/go/{slug}")
+async def go(slug: str, request: Request) -> RedirectResponse:
+    """Affiliate redirect — logs the click then 302s to the destination."""
+    s = get_settings()
+    if not s.affiliates_yaml_path:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=404, detail="no affiliates configured")
+    rules = load_rules(s.affiliates_yaml_path, amazon_tag=s.amazon_tag)
+    injector = AffiliateInjector(rules, redirect_domain=s.link_redirect_domain)
+    target = next((r.url for r in injector.rules if r.slug == slug), None)
+    if not target:
+        from fastapi import HTTPException
+
+        raise HTTPException(status_code=404, detail="unknown slug")
+    Session = get_sessionmaker()
+    async with Session() as session:
+        session.add(
+            Affiliate(
+                slug=slug,
+                target_url=target,
+                referrer=request.headers.get("referer"),
+                user_agent=request.headers.get("user-agent"),
+            )
+        )
+        await session.commit()
+    return RedirectResponse(target, status_code=302)

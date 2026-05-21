@@ -56,10 +56,49 @@ class Published(Base):
     candidate_id: Mapped[int] = mapped_column(Integer)
     locale: Mapped[str] = mapped_column(String(8))
     title: Mapped[str] = mapped_column(String(256))
+    hook: Mapped[str | None] = mapped_column(String(512), nullable=True)
     youtube_video_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     privacy: Mapped[str] = mapped_column(String(16))
     outbox_path: Mapped[str] = mapped_column(String(512))
+    variants_json: Mapped[dict] = mapped_column(JSON, default=dict)
+    affiliate_count: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class Performance(Base):
+    """Per-day metrics for a published video, pulled from YouTube Analytics."""
+
+    __tablename__ = "performance"
+    __table_args__ = (
+        UniqueConstraint("youtube_video_id", "day", name="uq_perf_video_day"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    youtube_video_id: Mapped[str] = mapped_column(String(64))
+    day: Mapped[str] = mapped_column(String(10))  # YYYY-MM-DD (UTC)
+    views: Mapped[int] = mapped_column(Integer, default=0)
+    avg_view_duration_s: Mapped[float] = mapped_column(Float, default=0.0)
+    avg_view_pct: Mapped[float] = mapped_column(Float, default=0.0)
+    likes: Mapped[int] = mapped_column(Integer, default=0)
+    comments: Mapped[int] = mapped_column(Integer, default=0)
+    shares: Mapped[int] = mapped_column(Integer, default=0)
+    subscribers_gained: Mapped[int] = mapped_column(Integer, default=0)
+    estimated_revenue_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class Affiliate(Base):
+    """Click log for affiliate redirects (one row per click on /go/<slug>)."""
+
+    __tablename__ = "affiliate_clicks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    slug: Mapped[str] = mapped_column(String(64))
+    target_url: Mapped[str] = mapped_column(String(1024))
+    published_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    referrer: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    user_agent: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    clicked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
 @lru_cache

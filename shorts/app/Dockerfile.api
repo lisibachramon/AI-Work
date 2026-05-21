@@ -29,8 +29,9 @@ RUN uv pip install --system --no-cache ".[tts]"
 
 ENV SHORTS_DATA_DIR=/data \
     SHORTS_TTS_MODELS_DIR=/models \
-    SHORTS_CACHE_DIR=/cache
-VOLUME ["/data", "/models", "/cache"]
+    SHORTS_CACHE_DIR=/cache \
+    SHORTS_ASSETS_DIR=/assets
+VOLUME ["/data", "/models", "/cache", "/assets"]
 
 EXPOSE 8080
 

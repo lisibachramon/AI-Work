@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from functools import lru_cache
 from pathlib import Path
 
@@ -18,6 +19,7 @@ class Settings(BaseSettings):
     data_dir: Path = Field(default=Path("/data"), alias="SHORTS_DATA_DIR")
     tts_models_dir: Path = Field(default=Path("/models"), alias="SHORTS_TTS_MODELS_DIR")
     cache_dir: Path = Field(default=Path("/cache"), alias="SHORTS_CACHE_DIR")
+    assets_dir: Path = Field(default=Path("/assets"), alias="SHORTS_ASSETS_DIR")
 
     # --- database ---
     database_url: str = Field(
@@ -50,12 +52,54 @@ class Settings(BaseSettings):
         default="http://whisper:9000", alias="WHISPER_BASE_URL"
     )
 
-    # --- YouTube uploader ---
+    # --- TTS voice cloning (optional; consistent host voice → channel identity → subs) ---
+    # 6–10s clean .wav sample of the host. Used by XTTS speaker_wav. If empty,
+    # falls back to the built-in "Daisy Studious" voice.
+    host_voice_sample_path: str = Field(default="", alias="HOST_VOICE_SAMPLE_PATH")
+
+    # --- YouTube uploader (single-channel default; multi-channel overrides below) ---
     yt_client_id: str = Field(default="", alias="YT_CLIENT_ID")
     yt_client_secret: str = Field(default="", alias="YT_CLIENT_SECRET")
     yt_refresh_token: str = Field(default="", alias="YT_REFRESH_TOKEN")
     yt_upload_privacy: str = Field(default="private", alias="YT_UPLOAD_PRIVACY")
     yt_category_id: str = Field(default="24", alias="YT_CATEGORY_ID")  # Entertainment
+
+    # --- Multi-channel routing: niche channels monetise far better than generalists.
+    # JSON dict: {"de": {"client_id":"...", "client_secret":"...", "refresh_token":"..."}, ...}
+    # If a locale isn't in this dict, falls back to the global YT_* above.
+    yt_channels: dict = Field(default_factory=dict, alias="YT_CHANNELS_JSON")
+
+    # --- Variants + A/B (higher CTR + retention → more impressions) ---
+    title_variants: int = Field(default=3, alias="TITLE_VARIANTS")
+    hook_variants: int = Field(default=3, alias="HOOK_VARIANTS")
+
+    # --- Thumbnails (custom > auto on Shorts shelves) ---
+    channel_name: str = Field(default="", alias="CHANNEL_NAME")
+    thumbnail_font_path: str = Field(
+        default="/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        alias="THUMBNAIL_FONT_PATH",
+    )
+    upload_custom_thumbnail: bool = Field(default=True, alias="UPLOAD_CUSTOM_THUMBNAIL")
+
+    # --- Analytics feedback loop ---
+    yt_analytics_enabled: bool = Field(default=False, alias="YT_ANALYTICS_ENABLED")
+    yt_winner_lookback_days: int = Field(default=30, alias="YT_WINNER_LOOKBACK_DAYS")
+    yt_winner_min_views: int = Field(default=5000, alias="YT_WINNER_MIN_VIEWS")
+
+    # --- Pinned-comment / list-building CTA ---
+    cta_comment_template: str = Field(default="", alias="CTA_COMMENT_TEMPLATE")
+    post_pinned_comment: bool = Field(default=False, alias="POST_PINNED_COMMENT")
+
+    # --- Affiliate revenue layer ---
+    affiliates_yaml_path: str = Field(default="", alias="AFFILIATES_YAML_PATH")
+    link_redirect_domain: str = Field(default="", alias="LINK_REDIRECT_DOMAIN")
+    amazon_tag: str = Field(default="", alias="AMAZON_TAG")
+
+    # --- Distribution / multi-aspect renders ---
+    # Aspect ratios to render in addition to 9:16. 1x1 for Insta feed, 16:9 for X/YT-long.
+    render_aspects: list[str] = Field(
+        default_factory=lambda: ["9x16", "1x1", "16x9"], alias="RENDER_ASPECTS"
+    )
 
     # --- pipeline limits (fair-use posture; do not raise without legal review) ---
     max_source_clip_seconds: float = Field(
@@ -75,7 +119,7 @@ class Settings(BaseSettings):
         ]
     )
 
-    @field_validator("locales", mode="before")
+    @field_validator("locales", "render_aspects", mode="before")
     @classmethod
     def _parse_csv(cls, v: object) -> object:
         if isinstance(v, str):
@@ -88,6 +132,26 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             return [x.strip().lower() for x in v.split(",") if x.strip()]
         return v
+
+    @field_validator("yt_channels", mode="before")
+    @classmethod
+    def _parse_channels(cls, v: object) -> object:
+        if isinstance(v, str):
+            v = v.strip()
+            return json.loads(v) if v else {}
+        return v
+
+    def channel_for(self, locale: str) -> tuple[str, str, str]:
+        """Return (client_id, client_secret, refresh_token) for a locale.
+        Falls back to the global YT_* values when the locale has no override."""
+        override = self.yt_channels.get(locale) if self.yt_channels else None
+        if isinstance(override, dict) and override.get("refresh_token"):
+            return (
+                override.get("client_id") or self.yt_client_id,
+                override.get("client_secret") or self.yt_client_secret,
+                override["refresh_token"],
+            )
+        return (self.yt_client_id, self.yt_client_secret, self.yt_refresh_token)
 
 
 @lru_cache
