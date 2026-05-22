@@ -1,0 +1,119 @@
+name: Deploy Shorts
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "shorts/**"
+      - ".github/workflows/deploy-shorts.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: deploy-${{ github.workflow }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_OWNER: ${{ github.repository }}
+
+jobs:
+  build-and-push:
+    name: Build & push image
+    runs-on: ubuntu-latest
+    outputs:
+      api_image: ${{ steps.meta-api.outputs.tags }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Metadata — shorts-api
+        id: meta-api
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/shorts-api
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=sha,format=long
+
+      - name: Build & push shorts-api
+        uses: docker/build-push-action@v6
+        with:
+          context: shorts/app
+          file: shorts/app/Dockerfile.api
+          push: true
+          tags: ${{ steps.meta-api.outputs.tags }}
+          labels: ${{ steps.meta-api.outputs.labels }}
+          cache-from: type=gha,scope=shorts-api
+          cache-to: type=gha,scope=shorts-api,mode=max
+          platforms: linux/amd64
+
+  deploy:
+    name: Deploy to home server
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    env:
+      DEPLOY_PATH_SHORTS: ${{ secrets.DEPLOY_PATH_SHORTS || '/home/serverlisibachnet/docker/shorts' }}
+      KITCHEN_ENV_PATH: ${{ secrets.DEPLOY_PATH || '/home/serverlisibachnet/docker/kitchen' }}/.env
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            shorts/deploy
+
+      - name: Ensure deploy dir exists on server
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_SSH_HOST }}
+          username: ${{ secrets.DEPLOY_SSH_USER }}
+          password: ${{ secrets.DEPLOY_SSH_PASSWORD }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_SSH_PORT || 22 }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+            mkdir -p "${{ env.DEPLOY_PATH_SHORTS }}"
+
+      - name: Copy deploy files to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_SSH_HOST }}
+          username: ${{ secrets.DEPLOY_SSH_USER }}
+          password: ${{ secrets.DEPLOY_SSH_PASSWORD }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_SSH_PORT || 22 }}
+          source: "shorts/deploy/docker-compose.yml,shorts/deploy/.env.example,shorts/deploy/affiliates.example.yml,shorts/deploy/bootstrap_env.py"
+          target: ${{ env.DEPLOY_PATH_SHORTS }}
+          overwrite: true
+          strip_components: 2
+
+      - name: Bootstrap .env (if missing) & roll the stack
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_SSH_HOST }}
+          username: ${{ secrets.DEPLOY_SSH_USER }}
+          password: ${{ secrets.DEPLOY_SSH_PASSWORD }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_SSH_PORT || 22 }}
+          script_stop: true
+          envs: DEPLOY_PATH_SHORTS,KITCHEN_ENV_PATH
+          script: |
+            set -euo pipefail
+            cd "$DEPLOY_PATH_SHORTS"
+            KITCHEN_ENV_PATH="$KITCHEN_ENV_PATH" python3 bootstrap_env.py "$DEPLOY_PATH_SHORTS"
+            echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+            docker compose pull api
+            docker compose up -d --remove-orphans
+            docker image prune -f
+            docker compose ps

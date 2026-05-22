@@ -312,10 +312,17 @@ export const ingestionEvents = pgTable(
     transcript: text("transcript"),
     llm_response: jsonb("llm_response"),
     error: text("error"),
+    client_session_id: text("client_session_id"),
+    metadata: jsonb("metadata").notNull().default(sql`'{}'::jsonb`),
     created_at: createdAt(),
     applied_at: timestamp("applied_at", { withTimezone: true }),
   },
-  (t) => [index("ingestion_events_user_status_idx").on(t.user_id, t.status)],
+  (t) => [
+    index("ingestion_events_user_status_idx").on(t.user_id, t.status),
+    uniqueIndex("ingestion_events_user_session_uq")
+      .on(t.user_id, t.client_session_id)
+      .where(sql`${t.client_session_id} IS NOT NULL`),
+  ],
 );
 
 export const ingestionProposals = pgTable(

@@ -2,8 +2,28 @@ import type { FastifyInstance } from "fastify";
 import { and, eq, isNull, asc, sql } from "drizzle-orm";
 import { z } from "zod";
 import { StockItemInput } from "@kitchen/shared/schemas";
-import { ingredients, locations, stockItems } from "@kitchen/db/schema";
+import { barcodes, ingredients, locations, stockItems } from "@kitchen/db/schema";
+import type { INGREDIENT_CATEGORIES, LOCATION_KINDS } from "@kitchen/db/schema";
 import { requireAuth } from "./auth.js";
+
+type IngredientCategory = (typeof INGREDIENT_CATEGORIES)[number];
+type LocationKind = (typeof LOCATION_KINDS)[number];
+
+// Default location kind by ingredient category. Used by the scan-and-add-all
+// auto-add path; the user can change it afterwards from inventory.
+const CATEGORY_TO_LOCATION_KIND: Record<IngredientCategory, LocationKind> = {
+  produce: "fridge",
+  dairy: "fridge",
+  meat: "fridge",
+  fish: "fridge",
+  frozen: "freezer",
+  spices: "spice_rack",
+  bakery: "pantry",
+  dry_goods: "pantry",
+  beverages: "pantry",
+  condiments: "pantry",
+  other: "pantry",
+};
 
 const ListQuery = z.object({
   location_id: z.string().uuid().optional(),
@@ -77,6 +97,64 @@ export async function registerStockRoutes(app: FastifyInstance) {
       })
       .returning();
     return row;
+  });
+
+  const FromGtinBody = z.object({
+    gtin: z.string().regex(/^[0-9]{8,14}$/),
+    quantity: z.number().positive().max(9999).optional(),
+    location_id: z.string().uuid().optional(),
+  });
+
+  app.post("/api/stock/from-gtin", async (req, reply) => {
+    const userId = requireAuth(req, reply);
+    if (!userId) return;
+    const parsed = FromGtinBody.safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send(parsed.error.flatten());
+    const gtin = parsed.data.gtin.padStart(13, "0").slice(-13);
+
+    const [bc] = await app.db.select().from(barcodes).where(eq(barcodes.gtin, gtin)).limit(1);
+    if (!bc || !bc.ingredient_id) {
+      return reply.code(404).send({ error: "unknown_gtin" });
+    }
+    const [ing] = await app.db
+      .select()
+      .from(ingredients)
+      .where(and(eq(ingredients.id, bc.ingredient_id), eq(ingredients.user_id, userId)))
+      .limit(1);
+    if (!ing) return reply.code(404).send({ error: "ingredient_not_for_user" });
+
+    // Pick the location: caller's explicit choice → category default → first owned.
+    let locationId = parsed.data.location_id;
+    if (!locationId) {
+      const owned = await app.db
+        .select()
+        .from(locations)
+        .where(eq(locations.user_id, userId))
+        .orderBy(asc(locations.display_order));
+      if (owned.length === 0) return reply.code(409).send({ error: "no_locations" });
+      const preferredKind = CATEGORY_TO_LOCATION_KIND[ing.category as IngredientCategory];
+      locationId = (owned.find((l) => l.kind === preferredKind) ?? owned[0])!.id;
+    }
+
+    const unit = bc.package_unit ?? "piece";
+    const pkgQty = bc.package_quantity ? Number(bc.package_quantity) : null;
+    const quantity =
+      parsed.data.quantity ?? (pkgQty && Number.isFinite(pkgQty) ? pkgQty : 1);
+
+    const [row] = await app.db
+      .insert(stockItems)
+      .values({
+        user_id: userId,
+        ingredient_id: ing.id,
+        location_id: locationId,
+        quantity: quantity.toString(),
+        unit,
+        barcode: gtin,
+        source: "video_barcode",
+        confidence: "1.000",
+      })
+      .returning();
+    return { stock_item: row, ingredient: { id: ing.id, name: ing.canonical_name_de } };
   });
 
   app.patch("/api/stock/:id", async (req, reply) => {

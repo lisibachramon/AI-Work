@@ -38,6 +38,7 @@
     kind: string;
     status: string;
     input_blob_path: string | null;
+    metadata?: { vision_calls?: number } | null;
   };
 
   let evt = $state<Event | null>(null);
@@ -148,7 +149,16 @@
 </script>
 
 <a href="/inventory/" class="back">← Cancel</a>
-<h1>Review proposals</h1>
+<h1>
+  Review proposals
+  {#if evt?.kind === "video_frame"}
+    <span class="event-badge">
+      Video session · {evt.metadata?.vision_calls ?? 0} Claude call{(evt.metadata?.vision_calls ?? 0) === 1 ? "" : "s"}
+    </span>
+  {:else if evt?.kind === "photo"}
+    <span class="event-badge">Photo</span>
+  {/if}
+</h1>
 
 {#if loading}
   <p class="muted">Loading…</p>
@@ -268,6 +278,21 @@
   }
   h1 {
     margin: 0.5rem 0 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+  }
+  .event-badge {
+    font-size: 0.7rem;
+    font-weight: 500;
+    background: #1d2a3a;
+    color: #9bb8d4;
+    border: 1px solid #2d4a6a;
+    border-radius: 4px;
+    padding: 0.15rem 0.45rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
   }
   .lead {
     color: #aaa;
