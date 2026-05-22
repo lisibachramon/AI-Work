@@ -10,34 +10,44 @@ by GitHub Actions; deploys SSH to the server and roll the containers.
    first deploy or `acme-companion` can't complete the HTTP-01
    challenge.
 
-2. **Deploy path**:
-   ```sh
-   ssh serverlisibachnet@lisibach.xyz \
-     'mkdir -p /home/serverlisibachnet/docker/shorts'
-   ```
-
-3. **Seed `.env`**:
-   ```sh
-   cd /home/serverlisibachnet/docker/shorts
-   curl -fsSL -o .env.example \
-     https://raw.githubusercontent.com/lisibachramon/AI-Work/main/shorts/deploy/.env.example
-   cp .env.example .env
-   $EDITOR .env
-   ```
-   At minimum fill in: `SHORTS_VHOST`, `LETSENCRYPT_EMAIL`,
-   `POSTGRES_PASSWORD`, `YOUTUBE_API_KEY`,
-   `YT_CLIENT_ID` / `YT_CLIENT_SECRET` / `YT_REFRESH_TOKEN`
-   (see [runbook.md](runbook.md) for the one-time OAuth dance), and
-   **one of** `CLAUDE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY`.
-
-4. **Verify the `proxy_default` network exists** — same one the kitchen
-   stack uses:
+2. **Verify the `proxy_default` network exists** (the kitchen stack
+   already declares it, so this is normally already true):
    ```sh
    docker network ls | grep proxy_default
    ```
 
-5. **GHCR login on the server** with a `read:packages` PAT (already done
-   for the kitchen stack; same login works repo-wide).
+3. **GHCR login on the server** with a `read:packages` PAT (one-time;
+   the kitchen stack already does this).
+
+Everything else is handled by the first deploy run. The workflow:
+
+- creates `/home/serverlisibachnet/docker/shorts/` if missing,
+- SCPs `docker-compose.yml`, `.env.example`, `affiliates.example.yml`,
+  and `bootstrap_env.py`,
+- on first deploy (when `.env` is missing) runs `bootstrap_env.py` which
+  copies `.env.example` → `.env`, generates a fresh
+  `POSTGRES_PASSWORD`, and **inherits** the following keys from the
+  kitchen stack's `.env`:
+    - `LETSENCRYPT_EMAIL`
+    - `CLAUDE_OAUTH_TOKEN`
+    - `ANTHROPIC_API_KEY`
+    - `ANTHROPIC_OAUTH_BETA`
+    - `WHISPER_BASE_URL`
+    - `OLLAMA_BASE_URL`
+- pulls the image and rolls the stack.
+
+After the first deploy, the stack is healthy on `/health` but pipeline
+jobs will throw until you populate the remaining placeholders via SSH:
+
+```sh
+ssh serverlisibachnet@lisibach.xyz
+cd /home/serverlisibachnet/docker/shorts
+nano .env   # fill in YOUTUBE_API_KEY, YT_*, optionally PEXELS_API_KEY etc.
+docker compose restart api
+```
+
+See [runbook.md](runbook.md) for how to mint the YouTube OAuth refresh
+token (`YT_REFRESH_TOKEN`).
 
 ## GitHub Secrets
 

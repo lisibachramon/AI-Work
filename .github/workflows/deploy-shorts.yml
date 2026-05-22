@@ -63,26 +63,16 @@ jobs:
     name: Deploy to home server
     needs: build-and-push
     runs-on: ubuntu-latest
+    env:
+      DEPLOY_PATH_SHORTS: ${{ secrets.DEPLOY_PATH_SHORTS || '/home/serverlisibachnet/docker/shorts' }}
+      KITCHEN_ENV_PATH: ${{ secrets.DEPLOY_PATH || '/home/serverlisibachnet/docker/kitchen' }}/.env
     steps:
       - uses: actions/checkout@v4
         with:
           sparse-checkout: |
             shorts/deploy
 
-      - name: Copy deploy files to server
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.DEPLOY_SSH_HOST }}
-          username: ${{ secrets.DEPLOY_SSH_USER }}
-          password: ${{ secrets.DEPLOY_SSH_PASSWORD }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          port: ${{ secrets.DEPLOY_SSH_PORT || 22 }}
-          source: "shorts/deploy/docker-compose.yml,shorts/deploy/.env.example"
-          target: ${{ secrets.DEPLOY_PATH_SHORTS }}
-          overwrite: true
-          strip_components: 2
-
-      - name: Pull image & roll the stack
+      - name: Ensure deploy dir exists on server
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.DEPLOY_SSH_HOST }}
@@ -93,11 +83,35 @@ jobs:
           script_stop: true
           script: |
             set -euo pipefail
-            cd ${{ secrets.DEPLOY_PATH_SHORTS }}
-            if [ ! -f .env ]; then
-              echo "ERROR: ${{ secrets.DEPLOY_PATH_SHORTS }}/.env is missing. Copy .env.example to .env and fill it in before the first deploy." >&2
-              exit 1
-            fi
+            mkdir -p "${{ env.DEPLOY_PATH_SHORTS }}"
+
+      - name: Copy deploy files to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_SSH_HOST }}
+          username: ${{ secrets.DEPLOY_SSH_USER }}
+          password: ${{ secrets.DEPLOY_SSH_PASSWORD }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_SSH_PORT || 22 }}
+          source: "shorts/deploy/docker-compose.yml,shorts/deploy/.env.example,shorts/deploy/affiliates.example.yml,shorts/deploy/bootstrap_env.py"
+          target: ${{ env.DEPLOY_PATH_SHORTS }}
+          overwrite: true
+          strip_components: 2
+
+      - name: Bootstrap .env (if missing) & roll the stack
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_SSH_HOST }}
+          username: ${{ secrets.DEPLOY_SSH_USER }}
+          password: ${{ secrets.DEPLOY_SSH_PASSWORD }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_SSH_PORT || 22 }}
+          script_stop: true
+          envs: DEPLOY_PATH_SHORTS,KITCHEN_ENV_PATH
+          script: |
+            set -euo pipefail
+            cd "$DEPLOY_PATH_SHORTS"
+            KITCHEN_ENV_PATH="$KITCHEN_ENV_PATH" python3 bootstrap_env.py "$DEPLOY_PATH_SHORTS"
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             docker compose pull api
             docker compose up -d --remove-orphans
